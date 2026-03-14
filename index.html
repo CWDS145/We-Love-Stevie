@@ -180,15 +180,15 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <!-- Live leaderboard config -->
 <div class="card" style="margin-bottom:16px;border:1px dashed var(--border2)">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-    <div style="font-size:14px;font-weight:600;color:var(--t1)">&#9889; Live Golfer Scores</div>
+    <div style="font-size:14px;font-weight:600;color:var(--t1)">&#9889; Live Scores + Odds (PGA Tour)</div>
     <div style="display:flex;align-items:center;gap:8px">
       <span id="liveStatus" style="font-size:11px;color:var(--t3)">Offline</span>
       <button id="liveBtn" onclick="toggleLive()" style="padding:6px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Start Live</button>
     </div>
   </div>
   <div class="config-row" style="margin-bottom:8px">
-    <label>Worker URL</label>
-    <input type="text" id="workerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" style="flex:1;padding:7px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);color:var(--t1);font-family:var(--mono);font-size:12px;outline:none">
+    <label>Vercel URL</label>
+    <input type="text" id="workerUrl" placeholder="https://golf-proxy-XXXX.vercel.app" style="flex:1;padding:7px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);color:var(--t1);font-family:var(--mono);font-size:12px;outline:none">
     <label style="margin-left:12px">Interval</label>
     <select id="pollInterval" style="padding:6px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);color:var(--t1);font-size:12px">
       <option value="60">1 min</option>
@@ -204,20 +204,19 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
         <th style="text-align:left;padding:4px 6px;color:var(--t3);font-size:11px">PLAYER</th>
         <th style="text-align:right;padding:4px 6px;color:var(--t3);font-size:11px">TO PAR</th>
         <th style="text-align:right;padding:4px 6px;color:var(--t3);font-size:11px">THRU</th>
+        <th style="text-align:right;padding:4px 6px;color:var(--t3);font-size:11px">ODDS</th>
         <th style="text-align:center;padding:4px 6px;color:var(--t3);font-size:11px">STATUS</th>
       </tr></thead>
       <tbody id="liveBody"></tbody>
     </table>
   </div>
-  <div style="font-size:11px;color:var(--t3);margin-top:8px">Fetches live scores from ESPN via your Cloudflare Worker proxy. <a href="#" onclick="document.getElementById('liveSetupInfo').classList.toggle('hidden');return false" style="color:var(--blue-t);text-decoration:none">Setup instructions &#9660;</a></div>
+  <div style="font-size:11px;color:var(--t3);margin-top:8px">Fetches live scores + betting odds directly from pgatour.com via your Vercel proxy. Odds auto-replace CSV odds on every refresh. <a href="#" onclick="document.getElementById('liveSetupInfo').classList.toggle('hidden');return false" style="color:var(--blue-t);text-decoration:none">Setup instructions &#9660;</a></div>
   <div id="liveSetupInfo" class="hidden" style="font-size:11px;color:var(--t3);margin-top:8px;padding:10px;background:var(--bg2);border-radius:var(--r);line-height:1.7">
     <b style="color:var(--t1)">One-time setup (5 min, free):</b><br>
-    1. Go to <span style="color:var(--blue-t)">dash.cloudflare.com</span> → sign up free<br>
-    2. Workers &amp; Pages → Create → Create Worker<br>
-    3. Name it <span style="font-family:var(--mono)">sawgrass-proxy</span> → Deploy<br>
-    4. Click "Edit Code" → paste the worker.js code → Save &amp; Deploy<br>
-    5. Copy your Worker URL → paste it above → click Start Live<br>
-    <br>The worker.js file is included in your download.
+    1. Create GitHub repo <span style="font-family:var(--mono)">golf-proxy</span> with <span style="font-family:var(--mono)">api/leaderboard.js</span>, <span style="font-family:var(--mono)">package.json</span>, <span style="font-family:var(--mono)">vercel.json</span><br>
+    2. Go to <span style="color:var(--blue-t)">vercel.com</span> → sign up with GitHub → Import golf-proxy → Deploy<br>
+    3. Copy your Vercel URL → paste it above → click Start Live<br>
+    <br>Scrapes pgatour.com __NEXT_DATA__ for both leaderboard scores and live betting odds. No API keys needed.
   </div>
 </div>
 
@@ -725,16 +724,47 @@ async function fetchLive(workerUrl) {
   document.getElementById('liveStatus').textContent = 'Fetching...';
   document.getElementById('liveStatus').style.color = 'var(--amber)';
   try {
-    const url = workerUrl.replace(/\/$/, '') + '/leaderboard';
+    const url = workerUrl.replace(/\/$/, '') + '/api/leaderboard';
     const resp = await fetch(url);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
     renderLiveLeaderboard(data);
+    // Override ODDS with live data from PGA Tour
+    let oddsUpdated = 0;
+    if (data.oddsSource && data.players) {
+      // Normalize: strip diacritics for matching (PGA: "Åberg" vs DK: "Aberg")
+      const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      // Build normalized ODDS key lookup
+      const oddsKeyMap = {};
+      Object.keys(ODDS).forEach(k => { oddsKeyMap[norm(k)] = k; });
+
+      data.players.forEach(p => {
+        if (p.odds !== null && p.odds > 0) {
+          const nName = norm(p.name);
+          const existingKey = oddsKeyMap[nName];
+          if (existingKey) {
+            ODDS[existingKey] = p.odds;
+          } else {
+            ODDS[p.name] = p.odds;
+            oddsKeyMap[nName] = p.name;
+          }
+          oddsUpdated++;
+        }
+      });
+      if (oddsUpdated > 0) {
+        recomputeFieldAvgs();
+        const sName = document.getElementById('searchSingle').value;
+        const sEntry = ENTRIES.find(x => x.n === sName);
+        if (sEntry && !document.getElementById('singleDash').classList.contains('hidden')) renderSingle(sEntry);
+        if (cmpEntries.length >= 2 && !document.getElementById('cmpDash').classList.contains('hidden')) renderCompare();
+      }
+    }
     const now = new Date();
-    document.getElementById('liveStatus').textContent = 'Live — ' + data.playerCount + ' players — ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+    const oddsMsg = oddsUpdated > 0 ? ' — ' + oddsUpdated + ' odds updated' : ' — no odds feed';
+    document.getElementById('liveStatus').textContent = 'Live — ' + data.playerCount + ' players' + oddsMsg + ' — ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
     document.getElementById('liveStatus').style.color = 'var(--green)';
-    document.getElementById('timestamp').textContent = 'As of ' + now.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}) + ' ' + now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) + ' (live)';
+    document.getElementById('timestamp').textContent = 'As of ' + now.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}) + ' ' + now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) + ' (live' + (oddsUpdated > 0 ? ' + odds' : '') + ')';
   } catch (err) {
     document.getElementById('liveStatus').textContent = 'Error: ' + err.message;
     document.getElementById('liveStatus').style.color = 'var(--red)';
@@ -744,17 +774,19 @@ async function fetchLive(workerUrl) {
 function renderLiveLeaderboard(data) {
   const tbody = document.getElementById('liveBody');
   tbody.innerHTML = data.players.slice(0, 80).map(p => {
-    const statusColor = p.status === 'cut' ? 'var(--red)' : p.status === 'wd' ? 'var(--t3)' : 'var(--green)';
-    const parColor = p.toPar < 0 ? 'var(--red)' : p.toPar > 0 ? 'var(--t2)' : 'var(--t1)';
-    // Check if this player is on any loaded lineup
+    const statusColor = p.status === 'WITHDRAWN' ? 'var(--t3)' : p.status === 'COMPLETE' ? 'var(--blue)' : 'var(--green)';
+    const statusLabel = p.status === 'WITHDRAWN' ? 'WD' : p.status === 'COMPLETE' ? 'F' : '&#9679;';
+    const totalVal = parseInt(p.total) || 0;
+    const parColor = totalVal < 0 ? 'var(--red)' : totalVal > 0 ? 'var(--t2)' : 'var(--t1)';
     const inLineup = ENTRIES.some(e => e.l.includes(p.name));
     const highlight = inLineup ? 'background:rgba(59,130,246,.08);' : '';
     return '<tr style="border-bottom:1px solid var(--border);' + highlight + '">' +
-      '<td style="padding:4px 6px;font-family:var(--mono);color:var(--t2)">' + p.positionDisplay + '</td>' +
+      '<td style="padding:4px 6px;font-family:var(--mono);color:var(--t2)">' + p.position + '</td>' +
       '<td style="padding:4px 6px;color:var(--t1);font-weight:' + (inLineup ? '600' : '400') + '">' + p.name + (inLineup ? ' &#9733;' : '') + '</td>' +
-      '<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:' + parColor + '">' + p.toParDisplay + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:' + parColor + '">' + p.total + '</td>' +
       '<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:var(--t2)">' + p.thru + '</td>' +
-      '<td style="padding:4px 6px;text-align:center"><span style="font-size:10px;color:' + statusColor + '">' + (p.status === 'cut' ? 'CUT' : p.status === 'wd' ? 'WD' : '&#9679;') + '</span></td>' +
+      '<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:var(--amber-t)">' + (p.odds ? p.odds.toFixed(1) : '-') + '</td>' +
+      '<td style="padding:4px 6px;text-align:center"><span style="font-size:10px;color:' + statusColor + '">' + statusLabel + '</span></td>' +
       '</tr>';
   }).join('');
 }
