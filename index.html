@@ -24,7 +24,7 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100vh;padding:20px;line-height:1.5;position:relative}
-body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:url('Stevie.png') center center/cover no-repeat;opacity:0.95;pointer-events:none;z-index:0}
+body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:url('Stevie.png') center center/cover no-repeat;opacity:0.18;pointer-events:none;z-index:0}
 .dash{position:relative;z-index:1}
 .dash{max-width:1200px;margin:0 auto}
 .header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
@@ -176,6 +176,50 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <input type="file" id="fileInput" accept=".csv,.txt">
 </div>
 <div id="uploadStatus" class="hidden"></div>
+
+<!-- Live leaderboard config -->
+<div class="card" style="margin-bottom:16px;border:1px dashed var(--border2)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="font-size:14px;font-weight:600;color:var(--t1)">&#9889; Live Golfer Scores</div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span id="liveStatus" style="font-size:11px;color:var(--t3)">Offline</span>
+      <button id="liveBtn" onclick="toggleLive()" style="padding:6px 14px;background:var(--green);color:#fff;border:none;border-radius:var(--r);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font)">Start Live</button>
+    </div>
+  </div>
+  <div class="config-row" style="margin-bottom:8px">
+    <label>Worker URL</label>
+    <input type="text" id="workerUrl" placeholder="https://your-worker.your-subdomain.workers.dev" style="flex:1;padding:7px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);color:var(--t1);font-family:var(--mono);font-size:12px;outline:none">
+    <label style="margin-left:12px">Interval</label>
+    <select id="pollInterval" style="padding:6px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);color:var(--t1);font-size:12px">
+      <option value="60">1 min</option>
+      <option value="120">2 min</option>
+      <option value="300" selected>5 min</option>
+      <option value="600">10 min</option>
+    </select>
+  </div>
+  <div id="liveLeaderboard" class="hidden" style="max-height:300px;overflow-y:auto;margin-top:10px">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:4px 6px;color:var(--t3);font-size:11px">POS</th>
+        <th style="text-align:left;padding:4px 6px;color:var(--t3);font-size:11px">PLAYER</th>
+        <th style="text-align:right;padding:4px 6px;color:var(--t3);font-size:11px">TO PAR</th>
+        <th style="text-align:right;padding:4px 6px;color:var(--t3);font-size:11px">THRU</th>
+        <th style="text-align:center;padding:4px 6px;color:var(--t3);font-size:11px">STATUS</th>
+      </tr></thead>
+      <tbody id="liveBody"></tbody>
+    </table>
+  </div>
+  <div style="font-size:11px;color:var(--t3);margin-top:8px">Fetches live scores from ESPN via your Cloudflare Worker proxy. <a href="#" onclick="document.getElementById('liveSetupInfo').classList.toggle('hidden');return false" style="color:var(--blue-t);text-decoration:none">Setup instructions &#9660;</a></div>
+  <div id="liveSetupInfo" class="hidden" style="font-size:11px;color:var(--t3);margin-top:8px;padding:10px;background:var(--bg2);border-radius:var(--r);line-height:1.7">
+    <b style="color:var(--t1)">One-time setup (5 min, free):</b><br>
+    1. Go to <span style="color:var(--blue-t)">dash.cloudflare.com</span> → sign up free<br>
+    2. Workers &amp; Pages → Create → Create Worker<br>
+    3. Name it <span style="font-family:var(--mono)">sawgrass-proxy</span> → Deploy<br>
+    4. Click "Edit Code" → paste the worker.js code → Save &amp; Deploy<br>
+    5. Copy your Worker URL → paste it above → click Start Live<br>
+    <br>The worker.js file is included in your download.
+  </div>
+</div>
 
 <!-- Cash line config -->
 <div class="config-row">
@@ -642,6 +686,77 @@ function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   document.getElementById('singleMode').classList.toggle('hidden',tab!=='single');
   document.getElementById('compareMode').classList.toggle('hidden',tab!=='compare');
+}
+
+// ========== LIVE POLLING ==========
+let liveTimer = null;
+let isLive = false;
+
+function toggleLive() {
+  if (isLive) { stopLive(); } else { startLive(); }
+}
+
+function startLive() {
+  const workerUrl = document.getElementById('workerUrl').value.trim();
+  if (!workerUrl) {
+    document.getElementById('liveStatus').textContent = 'Enter Worker URL first';
+    document.getElementById('liveStatus').style.color = 'var(--red)';
+    return;
+  }
+  isLive = true;
+  document.getElementById('liveBtn').textContent = 'Stop Live';
+  document.getElementById('liveBtn').style.background = 'var(--red)';
+  document.getElementById('liveLeaderboard').classList.remove('hidden');
+  fetchLive(workerUrl);
+  const interval = parseInt(document.getElementById('pollInterval').value) * 1000;
+  liveTimer = setInterval(() => fetchLive(workerUrl), interval);
+}
+
+function stopLive() {
+  isLive = false;
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  document.getElementById('liveBtn').textContent = 'Start Live';
+  document.getElementById('liveBtn').style.background = 'var(--green)';
+  document.getElementById('liveStatus').textContent = 'Stopped';
+  document.getElementById('liveStatus').style.color = 'var(--t3)';
+}
+
+async function fetchLive(workerUrl) {
+  document.getElementById('liveStatus').textContent = 'Fetching...';
+  document.getElementById('liveStatus').style.color = 'var(--amber)';
+  try {
+    const url = workerUrl.replace(/\/$/, '') + '/leaderboard';
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    renderLiveLeaderboard(data);
+    const now = new Date();
+    document.getElementById('liveStatus').textContent = 'Live — ' + data.playerCount + ' players — ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+    document.getElementById('liveStatus').style.color = 'var(--green)';
+    document.getElementById('timestamp').textContent = 'As of ' + now.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric', year:'numeric'}) + ' ' + now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) + ' (live)';
+  } catch (err) {
+    document.getElementById('liveStatus').textContent = 'Error: ' + err.message;
+    document.getElementById('liveStatus').style.color = 'var(--red)';
+  }
+}
+
+function renderLiveLeaderboard(data) {
+  const tbody = document.getElementById('liveBody');
+  tbody.innerHTML = data.players.slice(0, 80).map(p => {
+    const statusColor = p.status === 'cut' ? 'var(--red)' : p.status === 'wd' ? 'var(--t3)' : 'var(--green)';
+    const parColor = p.toPar < 0 ? 'var(--red)' : p.toPar > 0 ? 'var(--t2)' : 'var(--t1)';
+    // Check if this player is on any loaded lineup
+    const inLineup = ENTRIES.some(e => e.l.includes(p.name));
+    const highlight = inLineup ? 'background:rgba(59,130,246,.08);' : '';
+    return '<tr style="border-bottom:1px solid var(--border);' + highlight + '">' +
+      '<td style="padding:4px 6px;font-family:var(--mono);color:var(--t2)">' + p.positionDisplay + '</td>' +
+      '<td style="padding:4px 6px;color:var(--t1);font-weight:' + (inLineup ? '600' : '400') + '">' + p.name + (inLineup ? ' &#9733;' : '') + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:' + parColor + '">' + p.toParDisplay + '</td>' +
+      '<td style="padding:4px 6px;text-align:right;font-family:var(--mono);color:var(--t2)">' + p.thru + '</td>' +
+      '<td style="padding:4px 6px;text-align:center"><span style="font-size:10px;color:' + statusColor + '">' + (p.status === 'cut' ? 'CUT' : p.status === 'wd' ? 'WD' : '&#9679;') + '</span></td>' +
+      '</tr>';
+  }).join('');
 }
 
 // ========== INIT ==========
