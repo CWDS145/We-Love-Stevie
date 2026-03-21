@@ -157,7 +157,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
     <span class="badge" id="dataBadge" style="background:var(--blue-bg);color:var(--blue-t)">NO DATA</span>
   </div>
 </div>
-<div id="timestamp" style="text-align:center;font-size:12px;color:#ffffff;font-family:var(--mono);margin-bottom:16px;margin-top:150px"></div>
+<div id="timestamp" style="text-align:center;font-size:12px;color:#ffffff;font-family:var(--mono);margin-bottom:16px;margin-top:345px"></div>
 
 <!-- UPLOAD ZONE -->
 <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
@@ -221,6 +221,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <div class="tabs">
   <div class="tab active" data-tab="single" onclick="switchTab('single')">Single Entry</div>
   <div class="tab" data-tab="compare" onclick="switchTab('compare')">Compare (up to 3)</div>
+  <div class="tab" data-tab="dmscap" onclick="switchTab('dmscap')" style="color:var(--amber-t)">DM/SC/AP</div>
 </div>
 
 <!-- SINGLE MODE -->
@@ -989,9 +990,21 @@ wireSearch('searchSingle','dropSingle',name=>{document.getElementById('searchSin
 wireSearch('searchCompare','dropCompare',name=>addCompare(name));
 
 function switchTab(tab){
+  const isDmscap = tab === 'dmscap';
+  const showCompare = tab === 'compare' || isDmscap;
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   document.getElementById('singleMode').classList.toggle('hidden',tab!=='single');
-  document.getElementById('compareMode').classList.toggle('hidden',tab!=='compare');
+  document.getElementById('compareMode').classList.toggle('hidden',!showCompare);
+  if (isDmscap && ENTRIES.length > 0) {
+    // Auto-load DrinkMilk, SevereChafing, moklovin
+    cmpEntries = [];
+    const names = ['DrinkMilk', 'SevereChafing', 'moklovin'];
+    names.forEach(name => {
+      const e = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
+      if (e && !cmpEntries.find(c => c.n === e.n)) cmpEntries.push(e);
+    });
+    renderCompare();
+  }
 }
 
 // ========== LIVE POLLING ==========
