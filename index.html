@@ -258,10 +258,25 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       </div>
     </div>
 
+    <!-- LIVE DK FANTASY POINTS -->
+    <div class="card hidden" id="sDKCard" style="margin-bottom:16px;border:1px solid var(--teal)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="sec" style="margin:0">Live DK Fantasy Points</div>
+        <span id="sDKBadge" style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--teal-bg);color:var(--teal-t);font-family:var(--mono)"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:10px">
+        <div class="metric" style="padding:10px 8px"><div class="label">CSV Points</div><div class="val" id="sDKCsv" style="font-size:20px">—</div><div class="sub">At upload</div></div>
+        <div class="metric" style="padding:10px 8px"><div class="label">Current Rnd</div><div class="val" id="sDKRound" style="font-size:20px;color:var(--teal)">—</div><div class="sub">Live scoring</div></div>
+        <div class="metric" style="padding:10px 8px"><div class="label">Position &#916;</div><div class="val" id="sDKFinish" style="font-size:20px;color:var(--amber-t)">—</div><div class="sub">Finish bonus change</div></div>
+        <div class="metric" style="padding:10px 8px"><div class="label">Projected</div><div class="val" id="sDKProj" style="font-size:20px;color:var(--green)">—</div><div class="sub">CSV + live</div></div>
+      </div>
+      <div id="sDKBreakdown" style="font-size:12px;color:#ffffff"></div>
+    </div>
+
     <div class="grid2">
       <div class="card">
         <div class="sec" style="margin-top:0">Lineup — odds breakdown</div>
-        <table class="player-table"><thead><tr><th>Player</th><th>Odds</th><th>Win %</th><th>Field %</th><th style="font-size:10px">OWN%</th></tr></thead><tbody id="sPlayerBody"></tbody></table>
+        <table class="player-table"><thead><tr><th>Player</th><th>Odds</th><th>Win %</th><th>Field %</th><th style="font-size:10px">OWN%</th><th style="font-size:10px;color:var(--teal-t)">DK</th></tr></thead><tbody id="sPlayerBody"></tbody></table>
       </div>
       <div class="card">
         <div class="sec" style="margin-top:0">Odds vs field</div>
@@ -338,6 +353,13 @@ let PLAYER_SCORES = {};
 let fieldCashAvg = 0;
 let fieldNonCashAvg = 0;
 let lastUploadTime = null;
+
+// ========== LIVE DK FANTASY POINTS ==========
+let PLAYER_IDS = {};      // player name → PGA Tour player ID
+let PLAYER_DK = {};       // player name → { currentRound: pts, total: pts, breakdown: {} }
+let PLAYER_POS = {};      // player name → current tournament position (e.g. "T16", "1")
+let PLAYER_POS_BASE = {}; // player name → position at CSV download (baseline for finish bonus delta)
+let DK_LAST_FETCH = null; // timestamp of last DK fetch
 
 // ========== FIELD DIFFERENTIATION CACHE ==========
 let fieldAvgDiff = 0.5; // average lineup uniqueness across field (0-1)
@@ -680,6 +702,7 @@ function handleFile(file) {
   reader.onload = function(e) {
     try {
       const prevCutLine = CUT_LINE; // Preserve current cut line
+      PLAYER_POS_BASE = {};         // Reset baseline so next live fetch re-snapshots
       const data = parseCSV(e.target.result);
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
@@ -743,6 +766,139 @@ function oddsClass(v){return v<50?'odds-good':v<200?'odds-mid':'odds-bad'}
 function probColor(p){return p>60?'var(--green)':p>30?'var(--amber)':'var(--red)'}
 function ownClass(own){return own>40?'own-high':own>20?'own-mid':'own-low'}
 
+// ========== LIVE DK FANTASY POINTS ==========
+// Fetches hole-by-hole scorecards from proxy and computes DK fantasy points
+// for players in the user's lineups. Points are for the CURRENT ROUND only.
+
+async function fetchDKPoints() {
+  // Build set of unique player names across all entries
+  const allPlayers = new Set();
+  ENTRIES.forEach(e => e.l.forEach(p => allPlayers.add(p)));
+
+  // Map to PGA Tour IDs (from live leaderboard data)
+  const idsToFetch = [];
+  const nameForId = {};
+  const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  allPlayers.forEach(name => {
+    // Try direct match first, then normalized
+    if (PLAYER_IDS[name]) {
+      idsToFetch.push(PLAYER_IDS[name]);
+      nameForId[PLAYER_IDS[name]] = name;
+    } else {
+      const nName = norm(name);
+      const match = Object.keys(PLAYER_IDS).find(k => norm(k) === nName);
+      if (match) {
+        idsToFetch.push(PLAYER_IDS[match]);
+        nameForId[PLAYER_IDS[match]] = name;
+      }
+    }
+  });
+
+  // Remove CUT players (no need to fetch)
+  const activeIds = idsToFetch.filter(id => {
+    const name = nameForId[id];
+    return !isPlayerCut(name);
+  });
+
+  if (!activeIds.length) return;
+
+  // Fetch in batches of 40 (proxy limit is 80)
+  const tournamentId = 'R2026475';
+  for (let i = 0; i < activeIds.length; i += 40) {
+    const batch = activeIds.slice(i, i + 40);
+    try {
+      const url = VERCEL_URL + '/api/scorecards?tournamentId=' + tournamentId + '&ids=' + batch.join(',');
+      const resp = await fetch(url);
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (!data.players) continue;
+
+      data.players.forEach(p => {
+        if (p.error) return;
+        const name = nameForId[p.playerId];
+        if (!name) return;
+        PLAYER_DK[name] = {
+          currentRound: p.dkPointsCurrentRound || 0,
+          total: p.dkPointsTotal || 0,
+          rounds: p.rounds || [],
+          playerState: p.playerState
+        };
+      });
+    } catch (e) {
+      console.warn('DK fetch batch error:', e);
+    }
+  }
+  DK_LAST_FETCH = new Date().toISOString();
+}
+
+function getEntryDKPoints(entry) {
+  // Sum current round DK points for all active (non-cut) players in lineup
+  // CRITICAL: CSV points already include finish bonus from CSV download time.
+  // We compute the DELTA (change) in finish bonus, not the absolute value.
+  // Example: Im was 1st (+30) at CSV time, now 6th (+12) → delta = -18
+  let currentRoundPts = 0;
+  let totalDKPts = 0;
+  let finishDelta = 0;
+  let playersWithData = 0;
+  const details = [];
+
+  entry.l.forEach(name => {
+    const dk = PLAYER_DK[name];
+    const isCut = isPlayerCut(name);
+    const pos = PLAYER_POS[name];
+    const basePos = PLAYER_POS_BASE[name];
+    const currentFB = isCut ? 0 : getFinishBonus(pos);
+    const baseFB = isCut ? 0 : getFinishBonus(basePos);
+    const fbDelta = currentFB - baseFB;
+    if (dk && !isCut) {
+      currentRoundPts += dk.currentRound;
+      totalDKPts += dk.total;
+      finishDelta += fbDelta;
+      playersWithData++;
+      details.push({ name, currentRound: dk.currentRound, total: dk.total, finishBonus: currentFB, finishDelta: fbDelta, pos, basePos });
+    } else if (!isCut) {
+      finishDelta += fbDelta;
+      details.push({ name, currentRound: 0, total: 0, noData: true, finishBonus: currentFB, finishDelta: fbDelta, pos, basePos });
+    } else {
+      details.push({ name, isCut: true });
+    }
+  });
+
+  return {
+    currentRound: Math.round(currentRoundPts * 100) / 100,
+    total: Math.round(totalDKPts * 100) / 100,
+    finishDelta: finishDelta,
+    csvPoints: entry.p,
+    // Projected = CSV pts + current round scoring + finish bonus change since CSV
+    projected: Math.round((entry.p + currentRoundPts + finishDelta) * 100) / 100,
+    playersWithData,
+    details
+  };
+}
+
+// Tournament finish position bonus (DraftKings Classic)
+function getFinishBonus(position) {
+  if (!position) return 0;
+  const num = parseInt(String(position).replace(/^T/i, ''));
+  if (isNaN(num) || num < 1) return 0;
+  const map = {1:30,2:20,3:18,4:16,5:14,6:12,7:10,8:9,9:8,10:7};
+  if (map[num]) return map[num];
+  if (num <= 15) return 6;
+  if (num <= 20) return 5;
+  if (num <= 25) return 4;
+  if (num <= 30) return 3;
+  if (num <= 40) return 2;
+  if (num <= 50) return 1;
+  return 0;
+}
+
+function formatDKDelta(val) {
+  if (val > 0) return '+' + val.toFixed(1);
+  if (val < 0) return val.toFixed(1);
+  return '0.0';
+}
+
 // ========== SINGLE MODE ==========
 let sCompChart=null,sScatterChart=null;
 
@@ -789,6 +945,36 @@ function renderSingle(entry){
   document.getElementById('sDiffFieldMarker').title = 'Field avg: ' + fieldDiffPct + '%';
   document.getElementById('sDiffVal').textContent = diffPct + '%';
 
+  // DK Fantasy Points card
+  const dkCard = document.getElementById('sDKCard');
+  const hasDK = Object.keys(PLAYER_DK).length > 0;
+  if (hasDK) {
+    dkCard.classList.remove('hidden');
+    const dk = getEntryDKPoints(entry);
+    document.getElementById('sDKCsv').textContent = dk.csvPoints.toFixed(1);
+    document.getElementById('sDKRound').textContent = formatDKDelta(dk.currentRound);
+    document.getElementById('sDKRound').style.color = dk.currentRound > 0 ? 'var(--teal)' : dk.currentRound < 0 ? 'var(--red)' : 'var(--t3)';
+    document.getElementById('sDKFinish').textContent = formatDKDelta(dk.finishDelta);
+    document.getElementById('sDKFinish').style.color = dk.finishDelta > 0 ? 'var(--green)' : dk.finishDelta < 0 ? 'var(--red)' : 'var(--t3)';
+    document.getElementById('sDKProj').textContent = dk.projected.toFixed(1);
+    document.getElementById('sDKProj').style.color = dk.projected >= CASH ? 'var(--green)' : 'var(--amber)';
+    document.getElementById('sDKBadge').textContent = 'LIVE R' + (PLAYER_DK[entry.l.find(p => PLAYER_DK[p])]?.rounds?.find(r => r.isCurrent)?.roundNumber || '?');
+    // Player-by-player breakdown with position and finish bonus
+    const bdHtml = dk.details.map(d => {
+      if (d.isCut) return '<span style="color:#888;text-decoration:line-through;margin-right:12px">'+d.name+'</span>';
+      const dkPts = PLAYER_DK[d.name];
+      const crPts = dkPts ? dkPts.currentRound : 0;
+      const crColor = crPts > 0 ? 'var(--teal)' : crPts < 0 ? 'var(--red)' : 'var(--t3)';
+      const posStr = d.pos ? ' <span style="color:var(--t3);font-size:11px">('+d.pos+')</span>' : '';
+      const fbColor = d.finishDelta > 0 ? 'var(--green)' : d.finishDelta < 0 ? 'var(--red)' : '';
+      const fbStr = d.finishDelta !== 0 ? ' <span style="color:'+fbColor+';font-size:10px;font-family:var(--mono)">'+formatDKDelta(d.finishDelta)+'fb</span>' : '';
+      return '<span style="margin-right:14px;white-space:nowrap">'+d.name+' <span style="color:'+crColor+';font-family:var(--mono);font-weight:600">'+formatDKDelta(crPts)+'</span>'+posStr+fbStr+'</span>';
+    }).join('');
+    document.getElementById('sDKBreakdown').innerHTML = bdHtml;
+  } else {
+    dkCard.classList.add('hidden');
+  }
+
   const tbody=document.getElementById('sPlayerBody');tbody.innerHTML='';
   const withOdds = o.active.filter(x => x.odds !== null).sort((a,b) => a.odds - b.odds);
   const noOdds = o.active.filter(x => x.odds === null);
@@ -809,11 +995,19 @@ function renderSingle(entry){
     }
     const own = FREQ[p.name] || 0;
     const ownPill = isCut ? '<span style="color:#888">—</span>' : '<span class="ownership-pill '+ownClass(own)+'">'+own.toFixed(1)+'%</span>';
-    tr.innerHTML='<td'+(isCut?' class="cut"':'')+'>'+p.name+'</td><td>'+oddsCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+winCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+(p.freq?p.freq.toFixed(1)+'%':'—')+'</td><td>'+ownPill+'</td>';
+    // DK column
+    const dkPts = PLAYER_DK[p.name];
+    let dkCell = '<span style="color:#888">—</span>';
+    if (dkPts && !isCut) {
+      const cr = dkPts.currentRound;
+      dkCell = '<span style="font-family:var(--mono);font-size:11px;font-weight:600;color:'+(cr>0?'var(--teal)':cr<0?'var(--red)':'var(--t3)')+'">'+formatDKDelta(cr)+'</span>';
+    }
+    tr.innerHTML='<td'+(isCut?' class="cut"':'')+'>'+p.name+'</td><td>'+oddsCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+winCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+(p.freq?p.freq.toFixed(1)+'%':'—')+'</td><td>'+ownPill+'</td><td>'+dkCell+'</td>';
     tbody.appendChild(tr);
   });
   const totTr=document.createElement('tr');totTr.className='total-row';
-  totTr.innerHTML='<td>Average (active)</td><td><span class="odds-pill '+(o.avg?oddsClass(o.avg):'odds-cut')+'">'+(o.avg?o.avg.toFixed(1):'N/A')+'</span></td><td style="font-family:var(--mono);font-size:12px">'+(o.avg?(1/o.avg*100).toFixed(3)+'%':'—')+'</td><td></td><td style="font-size:11px;color:#ffffff">avg '+enh.avgOwn.toFixed(1)+'%</td>';
+  const entryDK = hasDK ? getEntryDKPoints(entry) : null;
+  totTr.innerHTML='<td>Average (active)</td><td><span class="odds-pill '+(o.avg?oddsClass(o.avg):'odds-cut')+'">'+(o.avg?o.avg.toFixed(1):'N/A')+'</span></td><td style="font-family:var(--mono);font-size:12px">'+(o.avg?(1/o.avg*100).toFixed(3)+'%':'—')+'</td><td></td><td style="font-size:11px;color:#ffffff">avg '+enh.avgOwn.toFixed(1)+'%</td><td style="font-family:var(--mono);font-size:11px;color:var(--teal)">'+(entryDK?formatDKDelta(entryDK.currentRound):'—')+'</td>';
   tbody.appendChild(totTr);
 
   const ctx1=document.getElementById('sCompChart');
@@ -875,11 +1069,13 @@ function renderCompare(){
   if(cmpEntries.length<2){document.getElementById('cmpDash').classList.add('hidden');return}
   document.getElementById('cmpDash').classList.remove('hidden');
 
+  const hasDK = Object.keys(PLAYER_DK).length > 0;
   const data=cmpEntries.map(e=>{
     const odds=getOdds(e);
     const prob=cashProb(e);
     const enh=enhancedCashProb(e);
-    return{entry:e,odds,prob,enh,gap:CASH-e.p};
+    const dk=hasDK ? getEntryDKPoints(e) : null;
+    return{entry:e,odds,prob,enh,dk,gap:CASH-e.p};
   });
   const ranked=[...data].sort((a,b)=>b.enh.prob-a.enh.prob||(b.entry.p-a.entry.p));
 
@@ -888,8 +1084,10 @@ function renderCompare(){
     const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
     const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
     const diffPct = Math.round(d.enh.diff * 100);
+    const dkProj = d.dk ? d.dk.projected.toFixed(1) : '—';
+    const dkRnd = d.dk ? formatDKDelta(d.dk.currentRound) : '—';
     const tr=document.createElement('tr');
-    tr.innerHTML='<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'%</td><td style="font-family:var(--mono);color:'+probColor(d.enh.prob)+'">'+d.enh.prob+'%<span style="font-size:10px;color:'+(d.enh.delta>0?'var(--green)':d.enh.delta<0?'var(--red)':'var(--t3)')+'"> '+(d.enh.delta>0?'+':'')+d.enh.delta+'</span></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+diffPct+'%</td><td style="font-family:var(--mono)">'+d.entry.h+'</td>';
+    tr.innerHTML='<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+(d.dk?' <span style="font-size:10px;color:var(--teal)">→'+dkProj+'</span>':'')+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'%</td><td style="font-family:var(--mono);color:'+probColor(d.enh.prob)+'">'+d.enh.prob+'%<span style="font-size:10px;color:'+(d.enh.delta>0?'var(--green)':d.enh.delta<0?'var(--red)':'var(--t3)')+'"> '+(d.enh.delta>0?'+':'')+d.enh.delta+'</span></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+diffPct+'%</td><td style="font-family:var(--mono)">'+d.entry.h+'</td>';
     rb.appendChild(tr);
   });
 
@@ -905,6 +1103,7 @@ function renderCompare(){
     return '<div class="cmp-col"><div class="cmp-rank-badge cmp-rank-'+(ri+1)+'">#'+(ri+1)+'</div>'+
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
       '<div class="cmp-stat"><span class="k">Points</span><span class="v">'+d.entry.p+'</span></div>'+
+      (d.dk?'<div class="cmp-stat"><span class="k" style="color:var(--teal-t)">DK Projected</span><span class="v" style="color:var(--teal)">'+d.dk.projected.toFixed(1)+' <span style="font-size:10px">('+formatDKDelta(d.dk.currentRound)+')</span></span></div>':'')+
       '<div class="cmp-stat"><span class="k">Rank</span><span class="v">#'+d.entry.r+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'%</span></div>'+
       '<div class="cmp-stat"><span class="k">Enhanced prob</span><span class="v" style="color:'+probColor(d.enh.prob)+'">'+d.enh.prob+'% <span style="font-size:10px;color:'+(d.enh.delta>0?'var(--green)':d.enh.delta<0?'var(--red)':'var(--t3)')+'">'+(d.enh.delta>0?'+':'')+d.enh.delta+'</span></span></div>'+
@@ -926,7 +1125,9 @@ function renderCompare(){
         }
         const own = FREQ[p.name] || 0;
         const ownBadge = isCut ? '' : ' <span class="ownership-pill '+ownClass(own)+'" style="font-size:9px">'+own.toFixed(0)+'%</span>';
-        return '<div class="cmp-player"><span class="pname"'+(isCut?' style="text-decoration:line-through;opacity:.5"':'')+'>'+p.name+ownBadge+'</span>'+oddsDisplay+'</div>';
+        const dkPts = PLAYER_DK[p.name];
+        const dkBadge = (dkPts && !isCut) ? ' <span style="font-size:9px;font-family:var(--mono);color:'+(dkPts.currentRound>0?'var(--teal)':dkPts.currentRound<0?'var(--red)':'var(--t3)')+'">'+formatDKDelta(dkPts.currentRound)+'</span>' : '';
+        return '<div class="cmp-player"><span class="pname"'+(isCut?' style="text-decoration:line-through;opacity:.5"':'')+'>'+p.name+ownBadge+'</span><span>'+dkBadge+' '+oddsDisplay+'</span></div>';
       }).join('')+
       '</div></div>';
   }).join('');
@@ -1065,6 +1266,15 @@ async function fetchLive() {
           PLAYER_SCORES[p.name] = score;
           scoresUpdated++;
         }
+        // Store player ID and position for DK scorecard lookups
+        if (p.id) PLAYER_IDS[p.name] = p.id;
+        if (p.position) {
+          // First live fetch after CSV: snapshot as baseline for finish bonus delta
+          if (!PLAYER_POS_BASE[p.name] && Object.keys(PLAYER_POS_BASE).length < data.players.length) {
+            PLAYER_POS_BASE[p.name] = p.position;
+          }
+          PLAYER_POS[p.name] = p.position;
+        }
       });
       if (CUT_LINE !== null) {
         CUT_PLAYERS.clear();
@@ -1094,17 +1304,32 @@ async function fetchLive() {
       if (oddsUpdated > 0 || scoresUpdated > 0) {
         recomputeFieldAvgs();
         recomputeFieldDiff();
-        const sName = document.getElementById('searchSingle').value;
-        const sEntry = ENTRIES.find(x => x.n === sName);
-        if (sEntry && !document.getElementById('singleDash').classList.contains('hidden')) renderSingle(sEntry);
-        if (cmpEntries.length >= 2 && !document.getElementById('cmpDash').classList.contains('hidden')) renderCompare();
-        saveToStorage();
       }
     }
+
+    // Fetch DK fantasy points from scorecards (if we have entries loaded)
+    let dkMsg = '';
+    if (ENTRIES.length > 0 && Object.keys(PLAYER_IDS).length > 0) {
+      try {
+        await fetchDKPoints();
+        const dkCount = Object.keys(PLAYER_DK).length;
+        dkMsg = dkCount > 0 ? ' — ' + dkCount + ' DK pts' : '';
+      } catch (e) { console.warn('DK fetch error:', e); }
+    }
+
+    // Re-render views with updated data
+    if (oddsUpdated > 0 || scoresUpdated > 0 || Object.keys(PLAYER_DK).length > 0) {
+      const sName = document.getElementById('searchSingle').value;
+      const sEntry = ENTRIES.find(x => x.n === sName);
+      if (sEntry && !document.getElementById('singleDash').classList.contains('hidden')) renderSingle(sEntry);
+      if (cmpEntries.length >= 2 && !document.getElementById('cmpDash').classList.contains('hidden')) renderCompare();
+      saveToStorage();
+    }
+
     const now = new Date();
     const oddsMsg = oddsUpdated > 0 ? ' — ' + oddsUpdated + ' odds' : '';
     const cutMsg = CUT_LINE !== null ? ' — cut: ' + CUT_LINE : '';
-    document.getElementById('liveStatus').textContent = 'Live — ' + data.playerCount + ' players' + oddsMsg + cutMsg + ' — ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+    document.getElementById('liveStatus').textContent = 'Live — ' + data.playerCount + ' players' + oddsMsg + dkMsg + cutMsg + ' — ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
     document.getElementById('liveStatus').style.color = 'var(--green)';
     document.getElementById('timestamp').textContent = 'Data from ' + formatUploadTime(lastUploadTime) + ' (live ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'}) + ')';
   } catch (err) {
