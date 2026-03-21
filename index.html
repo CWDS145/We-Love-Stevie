@@ -679,11 +679,23 @@ function handleFile(file) {
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
+      const prevCutLine = CUT_LINE; // Preserve current cut line
       const data = parseCSV(e.target.result);
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
+      data.cutLine = prevCutLine; // Carry forward
       CUT_PLAYERS = new Set(data.cutPlayers || []);
       loadData(data);
+      // Re-apply cut line to new data if one was set
+      if (prevCutLine !== null) {
+        CUT_LINE = prevCutLine;
+        document.getElementById('cutLineInput').value = prevCutLine;
+        CUT_PLAYERS.clear();
+        applyCutLine();
+        recomputeFieldAvgs();
+        recomputeFieldDiff();
+        saveToStorage();
+      }
       showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' active players, ' + CUT_PLAYERS.size + ' cut.', true);
     } catch (err) {
       showStatus('Parse error: ' + err.message, false);
