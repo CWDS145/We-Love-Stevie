@@ -967,7 +967,10 @@ async function fetchLive() {
   document.getElementById('liveStatus').style.color = 'var(--amber)';
   try {
     const url = VERCEL_URL + '/api/leaderboard';
-    const resp = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
@@ -1027,7 +1030,8 @@ async function fetchLive() {
     document.getElementById('liveStatus').style.color = 'var(--green)';
     document.getElementById('timestamp').textContent = 'Data from ' + formatUploadTime(lastUploadTime) + ' (live ' + now.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'}) + ')';
   } catch (err) {
-    document.getElementById('liveStatus').textContent = 'Error: ' + err.message;
+    const msg = err.name === 'TypeError' ? 'Network error — check connection or proxy' : err.message;
+    document.getElementById('liveStatus').innerHTML = 'Error: ' + msg + ' <button onclick="fetchLive()" style="margin-left:8px;padding:2px 8px;font-size:11px">Retry</button>';
     document.getElementById('liveStatus').style.color = 'var(--red)';
   }
 }
