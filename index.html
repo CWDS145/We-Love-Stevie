@@ -710,25 +710,21 @@ function cashProb(e) {
     return Math.min(60, Math.max(1, Math.round(rankFactor * gapPenalty * 100)));
   }
 
-  // Above cash line
+ // Above cash line — completion drives certainty floor up
   const cushion = e.p - CASH;
-
-  // Key fix: if remainingSwing > cushion, you can fall back below cash
-  // Probability = how likely cushion survives the remaining swing
-  // More active players + more holes = lower certainty even with a lead
   const swingRisk = remainingSwing > 0
     ? Math.max(0, Math.min(1, cushion / (cushion + remainingSwing)))
     : 1;
 
-  // Base certainty from completion + swing risk combined
-  const baseCertainty = (0.4 + completionPct * 0.45) * (0.5 + swingRisk * 0.5);
+  // Certainty floor rises with completion; swing risk reduces it if cushion is thin
+  const baseCertainty = (0.55 + completionPct * 0.40) * (0.6 + swingRisk * 0.4);
 
+  if (cushion > 50) return Math.min(97, Math.round(97 * baseCertainty));
   if (cushion > 20) return Math.min(94, Math.round(90 * baseCertainty));
   if (cushion > 10) return Math.min(88, Math.round(80 * baseCertainty));
   if (cushion > 5)  return Math.min(80, Math.round(70 * baseCertainty));
   if (cushion > 2)  return Math.min(72, Math.round(60 * baseCertainty));
   return Math.min(65, Math.round(50 * baseCertainty));
-}
 
 function oddsClass(v) { return v < 50 ? 'odds-good' : v < 200 ? 'odds-mid' : 'odds-bad'; }
 function probColor(p) { return p > 60 ? 'var(--green)' : p > 30 ? 'var(--amber)' : 'var(--red)'; }
@@ -868,13 +864,7 @@ function renderCompare() {
     const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
     const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
     const tr = document.createElement('tr');
-   ranked.forEach((d,i) => {
-    const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
-    const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
-    const tr = document.createElement('tr');
-    tr.innerHTML = '<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'%</td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
-    rb.appendChild(tr);
-  });
+    tr.innerHTML = '<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="How is this calculated?">?</button></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
     rb.appendChild(tr);
   });
 
