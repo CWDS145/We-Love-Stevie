@@ -725,7 +725,7 @@ function cashProb(e) {
   if (cushion > 5)  return Math.min(80, Math.round(70 * baseCertainty));
   if (cushion > 2)  return Math.min(72, Math.round(60 * baseCertainty));
   return Math.min(65, Math.round(50 * baseCertainty));
-
+}
 function oddsClass(v) { return v < 50 ? 'odds-good' : v < 200 ? 'odds-mid' : 'odds-bad'; }
 function probColor(p) { return p > 60 ? 'var(--green)' : p > 30 ? 'var(--amber)' : 'var(--red)'; }
 
@@ -880,7 +880,7 @@ function renderCompare() {
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
       '<div class="cmp-stat"><span class="k">Points</span><span class="v">'+d.entry.p+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Rank</span><span class="v">#'+d.entry.r+'</span></div>'+
-      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'%</span></div>'+
+      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="How is this calculated?">?</button></span></div>'+
       '<div class="cmp-stat"><span class="k">Gap</span><span class="v">'+(d.gap<=0?'<span style="color:var(--green)">IN</span>':d.gap.toFixed(1))+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Holes</span><span class="v">'+d.entry.h+' ('+Math.round(d.entry.h/36)+')</span></div>'+
       '<div class="cmp-stat"><span class="k">Avg odds</span><span class="v">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</span></div>'+
