@@ -667,11 +667,23 @@ function cashProb(e) {
   if (!totalEntries) return 0;
 
   const gap = CASH - e.p;
+  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(x => x.h)) : 0;
+  const completionPct = maxHoles / (72 * 6);
+
+  // Count active (non-cut) players in this lineup
+  const activePlayers = e.l.filter(p => !isPlayerCut(p) && ODDS[p] !== undefined).length;
+  const totalPlayers = e.l.filter(p => !isPlayerCut(p)).length || 1;
+
+  // Holes left per player (rough: based on entry holes vs max)
+  const holesLeftPerPlayer = Math.max(0, maxHoles - e.h) / Math.max(totalPlayers, 1);
+
+  // Remaining variance: more active players + more holes = more uncertainty
+  // Each active player can swing roughly ±(holesLeft * 0.5) pts
+  const remainingSwing = activePlayers * holesLeftPerPlayer * 0.5;
 
   if (gap > 0) {
-    const maxHoles = Math.max(...ENTRIES.map(x => x.h));
+    // Below cash line
     const holesLeft = Math.max(0, maxHoles - e.h);
-    const completionPct = maxHoles / (72 * 6);
     const pphNeeded = holesLeft > 0 ? gap / holesLeft : Infinity;
 
     const entriesBetween = ENTRIES.filter(x => x.p > e.p && x.p < CASH).length;
@@ -698,16 +710,24 @@ function cashProb(e) {
     return Math.min(60, Math.max(1, Math.round(rankFactor * gapPenalty * 100)));
   }
 
+  // Above cash line
   const cushion = e.p - CASH;
-  const maxHoles = Math.max(...ENTRIES.map(x => x.h));
-  const completionPct = maxHoles / (72 * 6);
-  const certainty = 0.5 + (completionPct * 0.45);
 
-  if (cushion > 20) return Math.round(90 * certainty);
-  if (cushion > 10) return Math.round(80 * certainty);
-  if (cushion > 5)  return Math.round(70 * certainty);
-  if (cushion > 2)  return Math.round(60 * certainty);
-  return Math.round(50 * certainty);
+  // Key fix: if remainingSwing > cushion, you can fall back below cash
+  // Probability = how likely cushion survives the remaining swing
+  // More active players + more holes = lower certainty even with a lead
+  const swingRisk = remainingSwing > 0
+    ? Math.max(0, Math.min(1, cushion / (cushion + remainingSwing)))
+    : 1;
+
+  // Base certainty from completion + swing risk combined
+  const baseCertainty = (0.4 + completionPct * 0.45) * (0.5 + swingRisk * 0.5);
+
+  if (cushion > 20) return Math.min(94, Math.round(90 * baseCertainty));
+  if (cushion > 10) return Math.min(88, Math.round(80 * baseCertainty));
+  if (cushion > 5)  return Math.min(80, Math.round(70 * baseCertainty));
+  if (cushion > 2)  return Math.min(72, Math.round(60 * baseCertainty));
+  return Math.min(65, Math.round(50 * baseCertainty));
 }
 
 function oddsClass(v) { return v < 50 ? 'odds-good' : v < 200 ? 'odds-mid' : 'odds-bad'; }
