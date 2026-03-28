@@ -656,37 +656,61 @@ function clearCashHistory() {
   saveToStorage();
 }
 
-function cashProb(e){
-  // Get projected cash line
-  const proj = getProjectedCashLine();
-  const projectedCash = proj.projected;
-  
-  // Current gap vs current cash line
-  const currentGap = CASH - e.p;
-  if (currentGap <= 0) return 95; // Already cashing
-  
-  // Projected gap: how far below projected cash line will this entry be?
-  // Entry needs to grow too - estimate entry's projected final pts
-  const maxFieldHoles = ENTRIES.length ? Math.max(...ENTRIES.map(x => x.h)) : e.h;
-  const entryHolesRemaining = Math.max(0, maxFieldHoles - e.h + proj.holesRemaining / 6); // Rough estimate
-  
-  // Entry's pts per hole (using entry's own rate)
-  const entryPtsPerHole = e.h > 0 ? e.p / e.h : 3.5; // Default ~3.5 pts/hole
-  const entryProjected = e.p + (entryPtsPerHole * entryHolesRemaining);
-  
-  // Projected gap
-  const projectedGap = projectedCash - entryProjected;
-  
-  // If projected to be above cash line
-  if (projectedGap <= 0) {
-    // How comfortable is the margin?
-    const margin = -projectedGap;
-    if (margin > 20) return 95;
-    if (margin > 10) return 85;
-    if (margin > 5) return 75;
-    return 65;
+function cashProb(e) {
+  const totalEntries = ENTRIES.length;
+  if (!totalEntries) return 0;
+
+  // How many entries need to cash? (top ~50% in a 50/50)
+  const cashCount = ENTRIES.filter(x => x.p >= CASH).length;
+  const cashSlots = Math.max(cashCount, Math.round(totalEntries * 0.5));
+
+  // Already cashing
+  if (e.r <= cashSlots) {
+    const cushion = e.p - CASH;
+    if (cushion > 20) return 95;
+    if (cushion > 10) return 88;
+    if (cushion > 5)  return 80;
+    if (cushion > 0)  return 72;
+    return 65; // Right at cash line
   }
-  
+
+  // Entries between you and the cash line bubble
+  const entriesAbove = e.r - cashSlots; // How many you need to pass
+  const gap = CASH - e.p;              // How many pts you need
+
+  // Max holes remaining in your lineup
+  const maxHoles = Math.max(...ENTRIES.map(x => x.h));
+  const yourHoles = e.h;
+  const holesLeft = Math.max(0, maxHoles - yourHoles);
+  const totalHoles = 72 * 6; // 432 max
+  const completionPct = maxHoles / totalHoles; // How far through the tournament
+
+  // As tournament completes, gaps become harder to close
+  const closingFactor = Math.max(0, 1 - completionPct);
+
+  // Points per hole needed to close gap
+  const pphNeeded = holesLeft > 0 ? gap / holesLeft : Infinity;
+
+  // Base prob: rank-based (what fraction of remaining spots do you compete for)
+  const slotsLeft = cashSlots - ENTRIES.filter(x => x.p > e.p).length;
+  const entriesBehind = totalEntries - e.r;
+  const rankProb = slotsLeft <= 0 ? 0 :
+    Math.min(0.9, slotsLeft / (entriesAbove + slotsLeft));
+
+  // Gap penalty: harder to close large gaps late
+  let gapPenalty = 1;
+  if (pphNeeded === Infinity || holesLeft === 0) {
+    gapPenalty = gap <= 0 ? 1 : 0;
+  } else if (pphNeeded > 8)  gapPenalty = 0.05;
+  else if (pphNeeded > 5)    gapPenalty = 0.15;
+  else if (pphNeeded > 3)    gapPenalty = 0.35;
+  else if (pphNeeded > 1.5)  gapPenalty = 0.55;
+  else if (pphNeeded > 0.5)  gapPenalty = 0.75;
+  else                        gapPenalty = 0.90;
+
+  const raw = rankProb * gapPenalty * 100;
+  return Math.min(94, Math.max(1, Math.round(raw)));
+}
   // Below projected cash line
   const o = getOdds(e);
   const oddsBonus = o.avg && o.avg < 100 ? 0.1 : 0; // Low odds = upside
