@@ -208,9 +208,13 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <span style="font-size:12px;color:#ffffff;margin-left:8px">Enter after R2 — players with score &gt; this are CUT</span>
 </div>
 
-<div class="tabs">
-  <div class="tab active" data-tab="single" onclick="switchTab('single')">Single Entry</div>
-  <div class="tab" data-tab="compare" onclick="switchTab('compare')">Compare (up to 3)</div>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap">
+  <div class="tabs" style="margin-bottom:0">
+    <div class="tab active" data-tab="single" onclick="switchTab('single')">Single Entry</div>
+    <div class="tab" data-tab="compare" onclick="switchTab('compare')">Compare (up to 3)</div>
+  </div>
+  <button onclick="loadPreset(['DrinkMilk','SevereChafing','moklovin'])" style="padding:7px 14px;background:var(--purple-bg);color:var(--purple-t);border:1px solid rgba(168,85,247,.3);border-radius:var(--r);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font)">DM / SC / Mok</button>
+  <button onclick="loadPreset(['DrinkMilk','SevereChafing','PeshtigoIndians'])" style="padding:7px 14px;background:var(--teal-bg);color:var(--teal-t);border:1px solid rgba(20,184,166,.3);border-radius:var(--r);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font)">DM / SC / PI</button>
 </div>
 
 <div id="singleMode">
@@ -402,6 +406,18 @@ function saveToStorage() {
     tournament: document.getElementById('tournamentInput').value.trim()
   };
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch(e) {}
+}
+
+  function loadPreset(names) {
+  switchTab('compare');
+  cmpEntries = [];
+  names.forEach(name => {
+    const match = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
+    if (match && cmpEntries.length < 3 && !cmpEntries.find(x => x.n === match.n)) {
+      cmpEntries.push(match);
+    }
+  });
+  renderCompare();
 }
 
 function loadFromStorage() {
@@ -832,7 +848,13 @@ function renderCompare() {
     const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
     const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
     const tr = document.createElement('tr');
+   ranked.forEach((d,i) => {
+    const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
+    const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
+    const tr = document.createElement('tr');
     tr.innerHTML = '<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'%</td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
+    rb.appendChild(tr);
+  });
     rb.appendChild(tr);
   });
 
