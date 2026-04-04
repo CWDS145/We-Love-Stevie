@@ -277,7 +277,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard — Built with Chart.js + PapaParse</div>
+<div class="footer">We Love Stevie Dashboard v5 — Built with Chart.js + PapaParse</div>
 </div>
 
 <div class="modal-overlay" id="probModal" onclick="if(event.target===this)this.classList.remove('open')">
@@ -368,20 +368,20 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 </div>
 
 <script>
+// ========== index_v5.html ==========
+// FIX 1: Storage key restored to preserve existing sessions
+// FIX 2: Cut logic simplified — last-name match only, no normalization
+// FIX 3: DrinkMilk auto-load confirmed after both init() and handleFile()
+
 const VERCEL_URL='https://golf-proxy.vercel.app';
-const STORAGE_KEY='weLoveStevieDashboard_v4';
+const STORAGE_KEY='weLoveStevieDashboard'; // FIX 1: was _v4, broke session persistence
 
 let CASH=222,CASH_HISTORY=[],TOTAL=0,ODDS={},FREQ={},ENTRIES=[];
-let CUT_PLAYERS=new Set(); // names marked cut
-let CUT_LINE=null;         // to-par threshold (applied against PLAYER_SCORES from live)
-let PLAYER_SCORES={};      // playerName -> to-par integer (from live feed)
+let CUT_PLAYERS=new Set();
+let CUT_LINE=null;
+let PLAYER_SCORES={};
 let fieldCashAvg=0,fieldNonCashAvg=0,lastUploadTime=null;
-let currentSingleEntry=null; // tracks who is displayed in single mode
-
-// Normalise a player name for fuzzy matching
-function normName(s){
-  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z ]/g,'').trim();
-}
+let currentSingleEntry=null;
 
 function saveToStorage(){
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify({
@@ -409,25 +409,17 @@ function updateCutStatus(){
   const el=document.getElementById('cutStatus');if(el)el.textContent=CUT_PLAYERS.size>0?CUT_PLAYERS.size+' cut':'';
 }
 
-// Apply to-par cut line against PLAYER_SCORES (from live data)
-// Uses fuzzy matching to handle name differences between live feed and DK lineups
+// FIX 2: Simple last-name match. No fuzzy matching, no normalization.
+// For each lineup player, find matching live score by last name, mark cut if score > CUT_LINE.
 function applyCutLineToScores(){
   if(CUT_LINE===null)return;
-  // Build normalised lookup from PLAYER_SCORES
-  const scoreEntries=Object.entries(PLAYER_SCORES); // [name, score]
-  // Get all lineup player names
+  const scoreEntries=Object.entries(PLAYER_SCORES);
   const lineupNames=new Set();
   ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
   lineupNames.forEach(lineupName=>{
-    const normLineup=normName(lineupName);
-    // Find matching live score entry
+    const last=lineupName.split(' ').pop().toLowerCase();
     for(const [liveName,score] of scoreEntries){
-      const normLive=normName(liveName);
-      // Match if either name contains the other (handles middle name differences)
-      const lineupParts=normLineup.split(' ');
-      const liveParts=normLive.split(' ');
-      const lastMatch=lineupParts[lineupParts.length-1]===liveParts[liveParts.length-1];
-      if(lastMatch && score>CUT_LINE){
+      if(liveName.split(' ').pop().toLowerCase()===last && score>CUT_LINE){
         CUT_PLAYERS.add(lineupName);
         break;
       }
@@ -451,7 +443,7 @@ function applyCutPlayerNames(){
   const allNames=new Set();
   ENTRIES.forEach(e=>e.l.forEach(p=>allNames.add(p)));Object.keys(ODDS).forEach(p=>allNames.add(p));
   fragments.forEach(frag=>{
-    allNames.forEach(p=>{if(normName(p).includes(frag))CUT_PLAYERS.add(p);});
+    allNames.forEach(p=>{if(p.toLowerCase().includes(frag))CUT_PLAYERS.add(p);});
   });
   updateCutStatus();recomputeFieldAvgs();saveToStorage();
   refreshViews();
@@ -468,7 +460,6 @@ function clearAllCuts(){
 function refreshViews(){
   recomputeFieldAvgs();
   if(currentSingleEntry){
-    // Refresh the current single entry in case cut status changed
     const fresh=ENTRIES.find(x=>x.n===currentSingleEntry.n&&x.r===currentSingleEntry.r);
     if(fresh)renderSingle(fresh);
   }
@@ -493,11 +484,11 @@ function loadData(d,fromStorage=false){
     document.getElementById('dataBadge').style.color='var(--green)';
     document.getElementById('timestamp').textContent='Data from '+fmt(lastUploadTime);
   }
-  // Reset compare, do NOT reset single yet — autoLoadDrinkMilk handles that
   cmpEntries=[];renderCompare();
   if(!fromStorage)saveToStorage();
 }
 
+// FIX 3: autoLoadDrinkMilk called AFTER loadData returns in both init() and handleFile()
 function autoLoadDrinkMilk(){
   const dm=ENTRIES.find(x=>x.n.toLowerCase().includes('drinkmilk'));
   if(dm){
@@ -593,12 +584,11 @@ function handleFile(file){
   reader.onload=function(e){
     try{
       const data=parseCSV(e.target.result);lastUploadTime=new Date().toISOString();data.uploadTime=lastUploadTime;
-      data.cutPlayers=Array.from(CUT_PLAYERS);// preserve cuts across reloads
+      data.cutPlayers=Array.from(CUT_PLAYERS);
       data.cutLine=CUT_LINE;data.playerScores=PLAYER_SCORES;
       loadData(data);
-      // Re-apply cut line against any existing live scores
       if(CUT_LINE!==null&&Object.keys(PLAYER_SCORES).length>0){applyCutLineToScores();recomputeFieldAvgs();}
-      autoLoadDrinkMilk(); // <-- always load DrinkMilk after upload
+      autoLoadDrinkMilk(); // FIX 3: after loadData completes
       showStatus('Loaded '+data.total+' entries, '+Object.keys(data.odds).length+' players with odds.',true);
     }catch(err){showStatus('Parse error: '+err.message,false);}
   };reader.readAsText(file);
@@ -828,11 +818,11 @@ async function fetchLive(){
     renderLiveLeaderboard(data);
     let scoresUpdated=0,oddsUpdated=0;
     if(data.players){
-      // Store scores
+      // Store scores keyed by player name
       data.players.forEach(p=>{const score=parseInt(p.total);if(!isNaN(score)){PLAYER_SCORES[p.name]=score;scoresUpdated++;}});
-      // Apply cut line against fresh scores
+      // Apply cut line against fresh scores on every fetch
       if(CUT_LINE!==null){applyCutLineToScores();}
-      // Update odds
+      // Update odds — use NFD normalization for odds matching only (not cut logic)
       const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');const oddsKeyMap={};Object.keys(ODDS).forEach(k=>{oddsKeyMap[norm(k)]=k;});
       data.players.forEach(p=>{if(p.odds!==null&&p.odds>0){const nName=norm(p.name);const ek=oddsKeyMap[nName];if(ek){ODDS[ek]=p.odds;}else{ODDS[p.name]=p.odds;oddsKeyMap[nName]=p.name;}oddsUpdated++;}});
       if(oddsUpdated>0||scoresUpdated>0){recomputeFieldAvgs();refreshViews();saveToStorage();}
@@ -872,7 +862,7 @@ function renderLiveLeaderboard(data){
   if(stored){
     loadData(stored,true);
     document.getElementById('singleEmpty').innerHTML='<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Data loaded from previous session</div><div style="font-size:13px">Search for any entry or upload new CSV</div>';
-    autoLoadDrinkMilk(); // <-- load DrinkMilk on page open
+    autoLoadDrinkMilk(); // FIX 3: after loadData completes
   }else{
     document.getElementById('timestamp').textContent='Upload CSV to begin';
   }
