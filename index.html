@@ -283,77 +283,66 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <div class="modal-overlay" id="probModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal-box">
     <button class="modal-close" onclick="document.getElementById('probModal').classList.remove('open')">&#x2715;</button>
-    <div class="modal-title">Cash probability model (v2) — Field projection</div>
-    <svg width="100%" viewBox="0 0 700 820" style="display:block;margin-bottom:16px">
+    <div class="modal-title">Cash probability model (v3.1) — Score-gap projection</div>
+    <svg width="100%" viewBox="0 0 700 780" style="display:block;margin-bottom:16px">
     <defs>
       <marker id="arrowM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
     </defs>
 
-    <!-- STEP 1: INPUTS -->
-    <rect x="220" y="16" width="260" height="42" rx="8" fill="#1a1f2a" stroke="#3a4560" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="600" fill="#ffffff" x="350" y="37" text-anchor="middle" dominant-baseline="central">For EVERY entry in the field</text>
+    <!-- STEP 1: BLENDED RATE -->
+    <rect x="100" y="16" width="500" height="130" rx="10" fill="#26200A" stroke="#854F0B" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#fbbf24" x="120" y="38" letter-spacing="0.5">STEP 1 — ENTRY-SPECIFIC BLENDED RATE</text>
+    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#B8956A" x="120" y="62">Each entry gets its own projected rate — not a single field average.</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#fbbf24" x="350" y="88" text-anchor="middle">blended_rate = 50% × entry_rate + 50% × field_rate</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="112">entry_rate = pts ÷ (6 players × rounds completed)</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="130">Shrinkage prevents both full regression and pure extrapolation</text>
 
-    <line x1="350" y1="58" x2="350" y2="90" stroke="#3a4560" stroke-width="1.5" marker-end="url(#arrowM)"/>
+    <line x1="350" y1="146" x2="350" y2="178" stroke="#854F0B" stroke-width="1.5" marker-end="url(#arrowM)"/>
 
-    <!-- STEP 1: PROJECT REMAINING -->
-    <rect x="100" y="90" width="500" height="120" rx="10" fill="#26200A" stroke="#854F0B" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#fbbf24" x="120" y="112" letter-spacing="0.5">STEP 1 — PROJECT REMAINING SCORING</text>
+    <!-- STEP 2: PROJECT MY FINAL -->
+    <rect x="100" y="178" width="500" height="100" rx="10" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#22c55e" x="120" y="200" letter-spacing="0.5">STEP 2 — PROJECT MY FINAL SCORE</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#5eead4" x="350" y="232" text-anchor="middle">my_projected = current_pts + (holes_left/18) × blended_rate</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#5DCAA5" x="120" y="258">holes_left / 18 = remaining player-rounds (direct from DK data)</text>
+    <rect x="460" y="242" width="130" height="32" rx="6" fill="#173404" stroke="#3B6D11" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="10" font-weight="600" fill="#97C459" x="525" y="263" text-anchor="middle">5 active &gt; 4 = edge</text>
 
-    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#fbbf24" x="350" y="142" text-anchor="middle">projected_final = current_pts + active × rate × rounds_left</text>
+    <line x1="350" y1="278" x2="350" y2="310" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
 
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="168">active = non-cut players in lineup</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="186">rate = field avg DK pts / player / round (regressed to mean)</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="204">rounds_left = estimated from TimeRemaining pattern</text>
+    <!-- STEP 3: CASH LINE PROJECTION -->
+    <rect x="100" y="310" width="500" height="120" rx="10" fill="#1a1540" stroke="#534AB7" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#60a5fa" x="120" y="332" letter-spacing="0.5">STEP 3 — PROJECT THE CASH LINE FORWARD</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#CECBF6" x="350" y="362" text-anchor="middle">proj_cash = CASH + avg_remPR_near × avg_rate_near</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#AFA9EC" x="120" y="392">Anchored to YOUR cash line — grown at the rate of entries near the threshold</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#AFA9EC" x="120" y="410">These ±50 entries around rank 50% determine where the cash line ends up</text>
 
-    <!-- Advantage callout -->
-    <rect x="470" y="162" width="120" height="38" rx="6" fill="#173404" stroke="#3B6D11" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="10" font-weight="600" fill="#97C459" x="530" y="177" text-anchor="middle">5 active &gt; 4</text>
-    <text font-family="'DM Sans',sans-serif" font-size="10" fill="#97C459" x="530" y="193" text-anchor="middle">= scoring edge</text>
+    <line x1="350" y1="430" x2="350" y2="462" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrowM)"/>
 
-    <line x1="350" y1="210" x2="350" y2="242" stroke="#854F0B" stroke-width="1.5" marker-end="url(#arrowM)"/>
+    <!-- STEP 4: MARGIN + UNCERTAINTY -->
+    <rect x="100" y="462" width="500" height="130" rx="10" fill="#2D0A3E" stroke="#7C3AED" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#c084fc" x="120" y="484" letter-spacing="0.5">STEP 4 — MARGIN vs UNCERTAINTY → PROBABILITY</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#e9d5ff" x="350" y="514" text-anchor="middle">margin = my_projected − proj_cash</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#e9d5ff" x="350" y="538" text-anchor="middle">σ = 20 × √(player_rounds_remaining)</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="13" font-weight="600" fill="#ffffff" x="350" y="568" text-anchor="middle">P(cash) = Φ( margin / σ )</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B693DB" x="120" y="588">σ=20 per player-round captures scoring variance + model uncertainty</text>
 
-    <!-- STEP 2: PAIRWISE -->
-    <rect x="100" y="242" width="500" height="130" rx="10" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#22c55e" x="120" y="264" letter-spacing="0.5">STEP 2 — PAIRWISE COMPARISON (×1,379 entries)</text>
+    <!-- EXAMPLE -->
+    <line x1="350" y1="592" x2="350" y2="624" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrowM)"/>
 
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#9FE1CB" x="350" y="292" text-anchor="middle">For each rival entry i, what's the chance they finish above me?</text>
+    <rect x="70" y="624" width="560" height="144" rx="10" fill="#1a1f2a" stroke="#3a4560" stroke-width="0.8"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#fbbf24" x="90" y="646" letter-spacing="0.5">EXAMPLE: Sawgrass R3, CASH=278, proj cash line ≈ 435</text>
 
-    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#5eead4" x="350" y="322" text-anchor="middle">P(i beats me) = Φ( score_diff / √(σ_i² + σ_me²) )</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#60a5fa" x="90" y="672">DrinkMilk  284 pts, 5 active → proj 462, margin +27 → σ 57 → z=0.5 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#22c55e" x="590" y="672">~68%</text>
 
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#5DCAA5" x="120" y="352">σ = 8 DK pts per player per round (calibrated from PGA scoring data)</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#5DCAA5" x="120" y="368">Φ = normal CDF — converts gap + uncertainty into a probability</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#a855f7" x="90" y="696">SevereChafing  293 pts, 3 active → proj 450, margin +15 → σ 53 → z=0.3 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#22c55e" x="590" y="696">~61%</text>
 
-    <line x1="350" y1="372" x2="350" y2="404" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#14b8a6" x="90" y="720">moklovin  253 pts, 5 active → proj 420, margin −15 → σ 57 → z=−0.3 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#fbbf24" x="590" y="720">~40%</text>
 
-    <!-- STEP 3: RANK -->
-    <rect x="100" y="404" width="500" height="120" rx="10" fill="#1a1540" stroke="#534AB7" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#60a5fa" x="120" y="426" letter-spacing="0.5">STEP 3 — EXPECTED RANK DISTRIBUTION</text>
-
-    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#CECBF6" x="350" y="460" text-anchor="middle">expected_rank = 1 + Σ P(each entry above me)</text>
-    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#CECBF6" x="350" y="484" text-anchor="middle">σ_rank = √( Σ pᵢ(1 − pᵢ) )</text>
-
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#AFA9EC" x="120" y="514">Entries close in projected score contribute high rank variance</text>
-
-    <line x1="350" y1="524" x2="350" y2="556" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrowM)"/>
-
-    <!-- STEP 4: FINAL PROB -->
-    <rect x="150" y="556" width="400" height="100" rx="10" fill="#2D0A3E" stroke="#7C3AED" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#c084fc" x="170" y="578" letter-spacing="0.5">STEP 4 — CASH PROBABILITY</text>
-
-    <text font-family="'JetBrains Mono',monospace" font-size="13" font-weight="600" fill="#e9d5ff" x="350" y="612" text-anchor="middle">P(cash) = Φ( (cashRank − E[rank]) / σ_rank )</text>
-
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B693DB" x="170" y="644">cashRank = top 50% of field size</text>
-
-    <!-- EXAMPLE TRACE -->
-    <line x1="350" y1="656" x2="350" y2="688" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrowM)"/>
-
-    <rect x="110" y="688" width="480" height="118" rx="10" fill="#1a1f2a" stroke="#3a4560" stroke-width="0.8"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#fbbf24" x="130" y="710" letter-spacing="0.5">EXAMPLE: DrinkMilk — 253 pts, 5 active, R2 complete</text>
-
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#9ca3b4" x="130" y="732">projected_final = 253 + 5 × 18.5 × 2 = 438 pts</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#9ca3b4" x="130" y="750">Field avg entry (4.4 active): current + 4.4 × 18.5 × 2 = current + 163</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#9ca3b4" x="130" y="768">DM gains ~22 pts on avg 4-active entry just from the extra player</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#22c55e" x="130" y="792">→ Expected rank well inside top 50% → high cash probability</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#ef4444" x="90" y="750">Rank 1200  180 pts, 4 active → proj 320, margin −115 → σ 57 → z=−2.0 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#ef4444" x="590" y="750">~2%</text>
 
     </svg>
   </div>
@@ -664,86 +653,80 @@ function normalCDF(z){
   return 0.5*(1+sign*y);
 }
 
-// ---- CASH PROBABILITY v2: Field-projection model ----
-// For each entry in the field, computes P(they finish above this entry) using:
-//   - Current score gap
-//   - Active player advantage (more active = more remaining scoring)
-//   - Per-player-round scoring variance (σ=8, calibrated from PGA DK data)
-// Then: expected final rank = 1 + Σ P(each entry finishes above me)
-//       P(cash) = P(final rank ≤ top 50%)
+// ---- CASH PROBABILITY v3.1: Score-gap model ----
+// Projects entry's final score using entry-specific blended rate,
+// projects cash line forward using entries NEAR the cash threshold,
+// then P(cash) = Φ(margin / σ).
+//
+// v3 bug: used 50th pctl of projected finals → dragged down by weak entries
+// v3.1 fix: anchors to user's CASH value, grown at cash-line-adjacent rate
+
 function cashProbDetail(e){
   const n=ENTRIES.length;
   if(!n)return{prob:0,expectedRank:n,explain:'No data'};
   function countAct(x){return x.l.filter(p=>!isPlayerCut(p)).length;}
   const myActive=countAct(e);
 
-  // Estimate rounds remaining from TimeRemaining data
-  // TimeRemaining = 36 × active_players at round boundaries, decreases during play
+  // Estimate rounds remaining
   const maxH=Math.max(...ENTRIES.map(x=>x.h));
-  let roundsRem=0;
-  if(maxH>0){
-    // Find actual active count for max-remaining entry (don't assume from h/36)
-    let bestRemPerAct=0;
-    ENTRIES.forEach(x=>{const a=countAct(x);if(a>0){const rpa=x.h/a;if(rpa>bestRemPerAct)bestRemPerAct=rpa;}});
-    roundsRem=Math.min(4,bestRemPerAct/18);
+  if(maxH<=0){
+    const above=ENTRIES.filter(x=>x.p>e.p).length;
+    const isCash=(above+1)<=Math.round(n*0.5);
+    return{prob:isCash?95:3,expectedRank:above+1,explain:'No remaining data.'};
   }
+  let bestRemPerAct=0;
+  ENTRIES.forEach(x=>{const a=countAct(x);if(a>0){const rpa=x.h/a;if(rpa>bestRemPerAct)bestRemPerAct=rpa;}});
+  const roundsRem=Math.min(4,bestRemPerAct/18);
+  const roundsComp=Math.max(0.5,4-roundsRem);
 
-  // Tournament effectively over
   if(roundsRem<0.05){
     const above=ENTRIES.filter(x=>x.p>e.p).length;
     const isCash=(above+1)<=Math.round(n*0.5);
-    return{prob:isCash?95:3,expectedRank:above+1,explain:'Tournament complete. Rank '+(above+1)+' of '+n+'.'};
+    return{prob:isCash?97:3,expectedRank:above+1,explain:'Tournament complete. Rank '+(above+1)+' of '+n+'.'};
   }
 
-  // Scoring rate: field average per player per round (regression toward mean for all entries)
-  const roundsComp=Math.max(0.5,4-roundsRem);
+  // Field-average rate and entry-specific blended rate
   let totalPts=0;ENTRIES.forEach(x=>{totalPts+=x.p;});
-  const rate=totalPts/(n*6*roundsComp); // ~18.5 DK pts per player per round from Sawgrass data
+  const fieldRate=totalPts/(n*6*roundsComp);
+  const shrink=roundsComp/(roundsComp+2);
+  function blendedRate(x){return shrink*(x.p/(6*roundsComp))+(1-shrink)*fieldRate;}
+  function remPR(x){return x.h/18;}
 
-  // σ per player per round: calibrated from PGA DK scoring variance
-  // Includes ~20% upward adjustment for within-lineup correlation (shared conditions)
-  const SIGMA=8;
+  // My projected final
+  const myRate=blendedRate(e);
+  const myRemPR=remPR(e);
+  const myProjFinal=e.p+myRemPR*myRate;
 
-  // My projected remaining scoring
-  const myMu=myActive*rate*roundsRem;
-  const myVar=SIGMA*SIGMA*Math.max(0.5,myActive*roundsRem);
+  // Project cash line: anchor to user's CASH, grow at rate of entries NEAR cash threshold
+  // These entries determine where the actual cash line ends up
+  const sorted=[...ENTRIES].sort((a,b)=>b.p-a.p);
+  const cashIdx=Math.min(Math.floor(n*0.5),n-1);
+  const lo=Math.max(0,cashIdx-50),hi=Math.min(n-1,cashIdx+50);
+  const neighbors=sorted.slice(lo,hi+1);
+  const avgNbrRemPR=neighbors.reduce((s,x)=>s+remPR(x),0)/neighbors.length;
+  const avgNbrRate=neighbors.reduce((s,x)=>s+blendedRate(x),0)/neighbors.length;
+  const projCashLine=CASH+avgNbrRemPR*avgNbrRate;
 
-  // Compute expected rank: for each other entry, P(they finish above me)
-  let sumP=0,sumPQ=0;
-  ENTRIES.forEach(x=>{
-    if(x.n===e.n&&x.r===e.r)return;
-    const xAct=countAct(x);
-    const xMu=xAct*rate*roundsRem;
-    const xVar=SIGMA*SIGMA*Math.max(0.5,xAct*roundsRem);
-    // P(x final > my final) = Φ((x.p + xMu - e.p - myMu) / √(xVar + myVar))
-    const diff=(x.p+xMu)-(e.p+myMu);
-    const cs=Math.sqrt(xVar+myVar);
-    const p=cs>0.1?normalCDF(diff/cs):(diff>0?1:0);
-    sumP+=p;
-    sumPQ+=p*(1-p);
-  });
+  const margin=myProjFinal-projCashLine;
 
-  const expectedRank=1+sumP;
-  const sigmaRank=Math.sqrt(Math.max(1,sumPQ));
-  const cashRank=Math.round(n*0.50); // top 50% cash
+  // Uncertainty: σ=20 per player-round remaining
+  const SIGMA_PR=20;
+  const marginSigma=SIGMA_PR*Math.sqrt(Math.max(1,myRemPR));
 
-  // P(cash) = P(final rank ≤ cashRank) via normal approx on rank distribution
-  const z=(cashRank-expectedRank)/sigmaRank;
+  const z=margin/marginSigma;
   const prob=Math.min(97,Math.max(1,Math.round(normalCDF(z)*100)));
 
-  // Build explanation
+  // Projected rank (from projected finals)
+  const allProj=ENTRIES.map(x=>x.p+remPR(x)*blendedRate(x));
+  const projRank=1+allProj.filter(x=>x>myProjFinal).length;
+
   const fieldAvgAct=ENTRIES.reduce((s,x)=>s+countAct(x),0)/n;
-  const cushion=e.p-CASH;
-  const edgeLabel=myActive>fieldAvgAct?myActive+' active (field avg '+fieldAvgAct.toFixed(1)+') — scoring edge':
-                  myActive<fieldAvgAct?myActive+' active (field avg '+fieldAvgAct.toFixed(1)+') — scoring disadvantage':
+  const edgeLabel=myActive>fieldAvgAct?myActive+' active (field avg '+fieldAvgAct.toFixed(1)+')':
+                  myActive<fieldAvgAct?myActive+' active (field avg '+fieldAvgAct.toFixed(1)+') — fewer active':
                   myActive+' active (field avg)';
-  let explain;
-  if(cushion>=0){
-    explain='Projected rank '+Math.round(expectedRank)+'/'+n+'. '+edgeLabel+'. ~'+roundsRem.toFixed(1)+' rounds remain.';
-  }else{
-    explain=Math.round(-cushion)+' below cash. Projected rank '+Math.round(expectedRank)+'/'+n+'. Need top '+cashRank+'. '+edgeLabel+'.';
-  }
-  return{prob,expectedRank:Math.round(expectedRank),explain};
+  const explain='Proj rank '+projRank+'/'+n+'. '+edgeLabel+'. Margin '+(margin>0?'+':'')+Math.round(margin)+' vs proj cash line '+Math.round(projCashLine)+'. ~'+roundsRem.toFixed(1)+' rounds left.';
+
+  return{prob,expectedRank:projRank,explain};
 }
 
 function cashProb(e){return cashProbDetail(e).prob;}
