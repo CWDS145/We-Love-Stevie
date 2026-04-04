@@ -169,7 +169,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 
 <div class="config-row">
   <label>Tournament</label>
-  <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:220px">
+  <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:200px">
   <button onclick="updateTournament()">Set</button>
   <label style="margin-left:8px">Cash line (pts)</label>
   <input type="number" id="cashLineInput" value="222" step="0.5">
@@ -177,11 +177,16 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <span id="cashHistoryInfo" style="font-size:12px;margin-left:8px"></span>
   <button onclick="clearCashHistory()" style="margin-left:4px;font-size:11px;padding:4px 8px">Clear History</button>
 </div>
+
 <div class="config-row">
-  <label>Cut players</label>
-  <input type="text" id="cutPlayersInput" placeholder="Last name, Last name..." style="width:300px">
+  <label>Cut line (to par)</label>
+  <input type="number" id="cutLineInput" value="" placeholder="+2" style="width:70px">
+  <button onclick="updateCutLine()">Apply</button>
+  <span style="font-size:11px;color:var(--t3);margin-left:4px">auto-marks cut from live scores</span>
+  <label style="margin-left:16px">Also mark by name</label>
+  <input type="text" id="cutPlayersInput" placeholder="Mitchell, Smith, Henley..." style="width:240px">
   <button onclick="applyCutPlayerNames()">Mark Cut</button>
-  <button onclick="clearCutPlayers()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Clear Cuts</button>
+  <button onclick="clearAllCuts()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Clear All Cuts</button>
   <span id="cutStatus" style="font-size:12px;color:var(--amber-t);margin-left:8px"></span>
 </div>
 
@@ -364,22 +369,113 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 
 <script>
 const VERCEL_URL='https://golf-proxy.vercel.app';
-const STORAGE_KEY='weLoveStevieDashboard';
-let CASH=222,CASH_HISTORY=[],TOTAL=0,ODDS={},FREQ={},ENTRIES=[],CUT_PLAYERS=new Set(),CUT_LINE=null,PLAYER_SCORES={},fieldCashAvg=0,fieldNonCashAvg=0,lastUploadTime=null;
+const STORAGE_KEY='weLoveStevieDashboard_v4';
+
+let CASH=222,CASH_HISTORY=[],TOTAL=0,ODDS={},FREQ={},ENTRIES=[];
+let CUT_PLAYERS=new Set(); // names marked cut
+let CUT_LINE=null;         // to-par threshold (applied against PLAYER_SCORES from live)
+let PLAYER_SCORES={};      // playerName -> to-par integer (from live feed)
+let fieldCashAvg=0,fieldNonCashAvg=0,lastUploadTime=null;
+let currentSingleEntry=null; // tracks who is displayed in single mode
+
+// Normalise a player name for fuzzy matching
+function normName(s){
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z ]/g,'').trim();
+}
 
 function saveToStorage(){
-  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({entries:ENTRIES,odds:ODDS,freq:FREQ,cashLine:CASH,cashHistory:CASH_HISTORY,total:TOTAL,cutPlayers:Array.from(CUT_PLAYERS),cutLine:CUT_LINE,playerScores:PLAYER_SCORES,uploadTime:lastUploadTime,tournament:document.getElementById('tournamentInput').value.trim(),cutPlayersInput:document.getElementById('cutPlayersInput').value}));}catch(e){}
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({
+    entries:ENTRIES,odds:ODDS,freq:FREQ,cashLine:CASH,cashHistory:CASH_HISTORY,total:TOTAL,
+    cutPlayers:Array.from(CUT_PLAYERS),cutLine:CUT_LINE,playerScores:PLAYER_SCORES,
+    uploadTime:lastUploadTime,
+    tournament:document.getElementById('tournamentInput').value.trim(),
+    cutPlayersInput:document.getElementById('cutPlayersInput').value
+  }));}catch(e){}
 }
 
 function loadFromStorage(){
   try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return null;const d=JSON.parse(raw);if(!d.entries||!d.entries.length)return null;return d;}catch(e){return null;}
 }
 
-function formatUploadTime(ts){
+function fmt(ts){
   if(!ts)return'';const d=new Date(ts);
   return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
 }
 
+// ---- CUT MANAGEMENT ----
+function isPlayerCut(p){return CUT_PLAYERS.has(p);}
+
+function updateCutStatus(){
+  const el=document.getElementById('cutStatus');if(el)el.textContent=CUT_PLAYERS.size>0?CUT_PLAYERS.size+' cut':'';
+}
+
+// Apply to-par cut line against PLAYER_SCORES (from live data)
+// Uses fuzzy matching to handle name differences between live feed and DK lineups
+function applyCutLineToScores(){
+  if(CUT_LINE===null)return;
+  // Build normalised lookup from PLAYER_SCORES
+  const scoreEntries=Object.entries(PLAYER_SCORES); // [name, score]
+  // Get all lineup player names
+  const lineupNames=new Set();
+  ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
+  lineupNames.forEach(lineupName=>{
+    const normLineup=normName(lineupName);
+    // Find matching live score entry
+    for(const [liveName,score] of scoreEntries){
+      const normLive=normName(liveName);
+      // Match if either name contains the other (handles middle name differences)
+      const lineupParts=normLineup.split(' ');
+      const liveParts=normLive.split(' ');
+      const lastMatch=lineupParts[lineupParts.length-1]===liveParts[liveParts.length-1];
+      if(lastMatch && score>CUT_LINE){
+        CUT_PLAYERS.add(lineupName);
+        break;
+      }
+    }
+  });
+  updateCutStatus();
+}
+
+function updateCutLine(){
+  const inp=document.getElementById('cutLineInput').value.trim();
+  CUT_LINE=inp===''?null:parseInt(inp);
+  if(!isNaN(CUT_LINE)&&CUT_LINE!==null){
+    applyCutLineToScores();
+  }
+  refreshViews();saveToStorage();
+}
+
+function applyCutPlayerNames(){
+  const inp=document.getElementById('cutPlayersInput').value;if(!inp.trim())return;
+  const fragments=inp.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const allNames=new Set();
+  ENTRIES.forEach(e=>e.l.forEach(p=>allNames.add(p)));Object.keys(ODDS).forEach(p=>allNames.add(p));
+  fragments.forEach(frag=>{
+    allNames.forEach(p=>{if(normName(p).includes(frag))CUT_PLAYERS.add(p);});
+  });
+  updateCutStatus();recomputeFieldAvgs();saveToStorage();
+  refreshViews();
+  showStatus('Marked '+CUT_PLAYERS.size+' player(s) cut.',true);
+}
+
+function clearAllCuts(){
+  CUT_PLAYERS.clear();CUT_LINE=null;
+  document.getElementById('cutLineInput').value='';
+  document.getElementById('cutPlayersInput').value='';
+  updateCutStatus();recomputeFieldAvgs();saveToStorage();refreshViews();
+}
+
+function refreshViews(){
+  recomputeFieldAvgs();
+  if(currentSingleEntry){
+    // Refresh the current single entry in case cut status changed
+    const fresh=ENTRIES.find(x=>x.n===currentSingleEntry.n&&x.r===currentSingleEntry.r);
+    if(fresh)renderSingle(fresh);
+  }
+  if(cmpEntries.length>=2)renderCompare();
+}
+
+// ---- LOAD DATA ----
 function loadData(d,fromStorage=false){
   CASH=d.cashLine||CASH;CASH_HISTORY=d.cashHistory||[];TOTAL=d.total;ODDS=d.odds;FREQ=d.freq;ENTRIES=d.entries;
   CUT_PLAYERS=new Set(d.cutPlayers||[]);CUT_LINE=d.cutLine!==undefined?d.cutLine:null;PLAYER_SCORES=d.playerScores||{};
@@ -387,20 +483,33 @@ function loadData(d,fromStorage=false){
   if(d.tournament)document.getElementById('tournamentInput').value=d.tournament;
   if(d.cutPlayersInput)document.getElementById('cutPlayersInput').value=d.cutPlayersInput;
   document.getElementById('cashLineInput').value=CASH;
+  document.getElementById('cutLineInput').value=CUT_LINE!==null?CUT_LINE:'';
   updateCutStatus();recomputeFieldAvgs();updateCashHistoryDisplay();
   const tourney=document.getElementById('tournamentInput').value.trim();
   document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
   if(lastUploadTime){
-    document.getElementById('dataBadge').textContent='UPLOADED: '+formatUploadTime(lastUploadTime);
+    document.getElementById('dataBadge').textContent='UPLOADED: '+fmt(lastUploadTime);
     document.getElementById('dataBadge').style.background='var(--green-bg)';
     document.getElementById('dataBadge').style.color='var(--green)';
-    document.getElementById('timestamp').textContent='Data from '+formatUploadTime(lastUploadTime);
+    document.getElementById('timestamp').textContent='Data from '+fmt(lastUploadTime);
   }
-  document.getElementById('singleDash').classList.add('hidden');
-  document.getElementById('singleEmpty').classList.remove('hidden');
-  document.getElementById('searchSingle').value='';
+  // Reset compare, do NOT reset single yet — autoLoadDrinkMilk handles that
   cmpEntries=[];renderCompare();
   if(!fromStorage)saveToStorage();
+}
+
+function autoLoadDrinkMilk(){
+  const dm=ENTRIES.find(x=>x.n.toLowerCase().includes('drinkmilk'));
+  if(dm){
+    document.getElementById('singleDash').classList.remove('hidden');
+    document.getElementById('singleEmpty').classList.add('hidden');
+    document.getElementById('searchSingle').value=dm.n;
+    renderSingle(dm);
+  }else{
+    document.getElementById('singleDash').classList.add('hidden');
+    document.getElementById('singleEmpty').classList.remove('hidden');
+    document.getElementById('searchSingle').value='';
+  }
 }
 
 function recomputeFieldAvgs(){
@@ -415,8 +524,7 @@ function updateCashLine(){
   CASH_HISTORY.push({value:v,time:Date.now(),maxHoles});recomputeFieldAvgs();updateCashHistoryDisplay();
   const tourney=document.getElementById('tournamentInput').value.trim();
   document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
-  if(!document.getElementById('singleDash').classList.contains('hidden')){const name=document.getElementById('searchSingle').value;const e=ENTRIES.find(x=>x.n===name);if(e)renderSingle(e);}
-  if(cmpEntries.length>=2)renderCompare();saveToStorage();
+  refreshViews();saveToStorage();
 }
 
 function getProjectedCashLine(){
@@ -432,39 +540,10 @@ function getProjectedCashLine(){
 
 function updateCashHistoryDisplay(){
   const el=document.getElementById('cashHistoryInfo');if(!el)return;
-  if(CASH_HISTORY.length<2){el.innerHTML='<span style="color:#888">Need 2+ entries to project</span>';return;}
+  if(CASH_HISTORY.length<2){el.innerHTML='<span style="color:#888">Need 2+ to project</span>';return;}
   const proj=getProjectedCashLine();const arrow=proj.rate>0?'↑':proj.rate<0?'↓':'→';
   const color=proj.rate>0.3?'var(--red)':proj.rate>0.1?'var(--amber)':'var(--green)';
-  el.innerHTML=`<span style="color:${color}">${arrow} ${Math.abs(proj.rate).toFixed(2)} pts/hole</span> → <strong style="color:${color}">${proj.projected}</strong> projected <span style="color:#888">(${proj.holesRemaining}h left, ${proj.confidence})</span>`;
-}
-
-function isPlayerCut(p){return CUT_PLAYERS.has(p);}
-
-function updateCutStatus(){
-  const el=document.getElementById('cutStatus');if(!el)return;
-  el.textContent=CUT_PLAYERS.size>0?CUT_PLAYERS.size+' player(s) cut':'';
-}
-
-function applyCutPlayerNames(){
-  const inp=document.getElementById('cutPlayersInput').value;if(!inp.trim())return;
-  const fragments=inp.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
-  const allNames=new Set();
-  ENTRIES.forEach(e=>e.l.forEach(p=>allNames.add(p)));Object.keys(ODDS).forEach(p=>allNames.add(p));
-  fragments.forEach(frag=>{allNames.forEach(p=>{if(p.toLowerCase().includes(frag))CUT_PLAYERS.add(p);});});
-  updateCutStatus();recomputeFieldAvgs();saveToStorage();
-  if(!document.getElementById('singleDash').classList.contains('hidden')){const name=document.getElementById('searchSingle').value;const e=ENTRIES.find(x=>x.n===name);if(e)renderSingle(e);}
-  if(cmpEntries.length>=2)renderCompare();
-  showStatus('Marked '+CUT_PLAYERS.size+' player(s) cut.',true);
-}
-
-function clearCutPlayers(){
-  CUT_PLAYERS.clear();document.getElementById('cutPlayersInput').value='';updateCutStatus();recomputeFieldAvgs();saveToStorage();
-  if(!document.getElementById('singleDash').classList.contains('hidden')){const name=document.getElementById('searchSingle').value;const e=ENTRIES.find(x=>x.n===name);if(e)renderSingle(e);}
-  if(cmpEntries.length>=2)renderCompare();
-}
-
-function applyCutLine(){
-  if(CUT_LINE===null)return;Object.keys(PLAYER_SCORES).forEach(p=>{if(PLAYER_SCORES[p]>CUT_LINE)CUT_PLAYERS.add(p);});updateCutStatus();
+  el.innerHTML=`<span style="color:${color}">${arrow} ${Math.abs(proj.rate).toFixed(2)} pts/hole</span> → <strong style="color:${color}">${proj.projected}</strong> <span style="color:#888">(${proj.holesRemaining}h left, ${proj.confidence})</span>`;
 }
 
 function updateTournament(){
@@ -475,20 +554,18 @@ function updateTournament(){
 
 function clearCashHistory(){CASH_HISTORY=[];updateCashHistoryDisplay();saveToStorage();}
 
+// ---- CSV PARSE ----
 function parseCSV(text){
   const result=Papa.parse(text,{header:true,skipEmptyLines:true});
   if(result.errors.length>5)throw new Error('Too many parse errors: '+result.errors[0].message);
-  const rows=result.data;if(rows.length<10)throw new Error('Only '+rows.length+' rows parsed — check file format');
-  const h=result.meta.fields;const find=(patterns)=>h.find(f=>patterns.some(p=>f.trim().toLowerCase().includes(p)));
+  const rows=result.data;if(rows.length<10)throw new Error('Only '+rows.length+' rows — check format');
+  const h=result.meta.fields;const find=p=>h.find(f=>p.some(x=>f.trim().toLowerCase().includes(x)));
   const colRank=find(['rank']);const colName=find(['entryname','entry_name','entry name']);const colPts=find(['points','pts']);
   const colTime=find(['timeremaining','time_remaining','time remaining','holes']);const colLineup=find(['lineup']);
   const colPlayer=find(['player']);const colOdds=find(['betting odds','bettingodds','odds']);
-  if(!colRank||!colName||!colPts)throw new Error('Missing required columns. Need: Rank, EntryName, Points. Found: '+h.slice(0,10).join(', '));
+  if(!colRank||!colName||!colPts)throw new Error('Missing columns. Need: Rank, EntryName, Points. Found: '+h.slice(0,10).join(', '));
   const odds={};
-  if(colPlayer&&colOdds){
-    rows.forEach(r=>{const p=(r[colPlayer]||'').trim();const o=(r[colOdds]||'').trim();
-      if(p&&o&&o!=='#N/A'&&o!=='N/A'&&o!==''){const v=parseFloat(o.replace(/,/g,''));if(!isNaN(v)&&v>0&&!odds[p])odds[p]=Math.round(v*100)/100;}});
-  }
+  if(colPlayer&&colOdds){rows.forEach(r=>{const p=(r[colPlayer]||'').trim();const o=(r[colOdds]||'').trim();if(p&&o&&o!=='#N/A'&&o!=='N/A'&&o!==''){const v=parseFloat(o.replace(/,/g,''));if(!isNaN(v)&&v>0&&!odds[p])odds[p]=Math.round(v*100)/100;}});}
   function parseLineup(s){if(!s)return[];return s.split(/\s*G\s+/).map(p=>p.trim()).filter(p=>p.length>0);}
   const entries=[];const freq={};
   rows.forEach(r=>{
@@ -501,6 +578,7 @@ function parseCSV(text){
   return{entries,odds,freq:freqPct,total,cashLine:CASH};
 }
 
+// ---- FILE HANDLING ----
 const uploadZone=document.getElementById('uploadZone');
 const fileInput=document.getElementById('fileInput');
 const statusDiv=document.getElementById('uploadStatus');
@@ -515,8 +593,13 @@ function handleFile(file){
   reader.onload=function(e){
     try{
       const data=parseCSV(e.target.result);lastUploadTime=new Date().toISOString();data.uploadTime=lastUploadTime;
-      data.cutPlayers=Array.from(CUT_PLAYERS);// preserve existing manual cuts across uploads
-      loadData(data);showStatus('Loaded '+data.total+' entries, '+Object.keys(data.odds).length+' players with odds.',true);
+      data.cutPlayers=Array.from(CUT_PLAYERS);// preserve cuts across reloads
+      data.cutLine=CUT_LINE;data.playerScores=PLAYER_SCORES;
+      loadData(data);
+      // Re-apply cut line against any existing live scores
+      if(CUT_LINE!==null&&Object.keys(PLAYER_SCORES).length>0){applyCutLineToScores();recomputeFieldAvgs();}
+      autoLoadDrinkMilk(); // <-- always load DrinkMilk after upload
+      showStatus('Loaded '+data.total+' entries, '+Object.keys(data.odds).length+' players with odds.',true);
     }catch(err){showStatus('Parse error: '+err.message,false);}
   };reader.readAsText(file);
 }
@@ -526,13 +609,13 @@ uploadZone.addEventListener('dragover',function(e){e.preventDefault();this.class
 uploadZone.addEventListener('dragleave',function(){this.classList.remove('dragover');});
 uploadZone.addEventListener('drop',function(e){e.preventDefault();this.classList.remove('dragover');handleFile(e.dataTransfer.files[0]);});
 
+// ---- CORE CALCS ----
 const COLORS=['#3b82f6','#a855f7','#14b8a6'];const CHIP_CLS=['chip-1','chip-2','chip-3'];
 
 function getOdds(e){
   const a=[],c=[];
   e.l.forEach(p=>{if(isPlayerCut(p)){c.push({name:p,freq:FREQ[p]||0});}else if(ODDS[p]!==undefined){a.push({name:p,odds:ODDS[p],freq:FREQ[p]||0});}else{a.push({name:p,odds:null,freq:FREQ[p]||0});}});
-  const withOdds=a.filter(x=>x.odds!==null);
-  return{active:a,cut:c,avg:withOdds.length?withOdds.reduce((s,x)=>s+x.odds,0)/withOdds.length:null,n:withOdds.length};
+  const w=a.filter(x=>x.odds!==null);return{active:a,cut:c,avg:w.length?w.reduce((s,x)=>s+x.odds,0)/w.length:null,n:w.length};
 }
 
 function cashProb(e){
@@ -551,7 +634,7 @@ function cashProb(e){
     let gapPenalty;
     if(holesLeft===0)gapPenalty=0.02;else if(pphNeeded>8)gapPenalty=0.05;else if(pphNeeded>5)gapPenalty=0.15;
     else if(pphNeeded>3)gapPenalty=0.30;else if(pphNeeded>1.5)gapPenalty=0.50;else if(pphNeeded>0.5)gapPenalty=0.70;else gapPenalty=0.85;
-    const latePenalty=Math.pow(completionPct,1.5);gapPenalty=gapPenalty*(1-latePenalty*0.5);
+    gapPenalty=gapPenalty*(1-Math.pow(completionPct,1.5)*0.5);
     return Math.min(60,Math.max(1,Math.round(rankFactor*gapPenalty*100)));
   }
   const cushion=e.p-CASH;
@@ -570,13 +653,15 @@ function probColor(p){return p>60?'var(--green)':p>30?'var(--amber)':'var(--red)
 
 function loadPreset(names){
   switchTab('compare');cmpEntries=[];
-  names.forEach(name=>{const match=ENTRIES.find(x=>x.n.toLowerCase().includes(name.toLowerCase()));if(match&&cmpEntries.length<3&&!cmpEntries.find(x=>x.n===match.n))cmpEntries.push(match);});
+  names.forEach(name=>{const m=ENTRIES.find(x=>x.n.toLowerCase().includes(name.toLowerCase()));if(m&&cmpEntries.length<3&&!cmpEntries.find(x=>x.n===m.n))cmpEntries.push(m);});
   renderCompare();
 }
 
+// ---- SINGLE MODE ----
 let sCompChart=null,sScatterChart=null;
 
 function renderSingle(entry){
+  currentSingleEntry=entry;
   document.getElementById('singleDash').classList.remove('hidden');document.getElementById('singleEmpty').classList.add('hidden');
   const o=getOdds(entry),gap=CASH-entry.p,ok=gap<=0,prob=cashProb(entry);
   document.getElementById('sRank').textContent=entry.r;document.getElementById('sRankSub').textContent='of '+TOTAL;
@@ -623,7 +708,7 @@ function renderSingle(entry){
   const ac=document.getElementById('sAnalysis');const pph=entry.h>0?(gap/entry.h).toFixed(2):'∞';
   if(ok)ac.innerHTML='<div class="callout callout-green"><b>In the money.</b> '+(-gap).toFixed(1)+' pt cushion.</div>';
   else if(gap<10)ac.innerHTML='<div class="callout callout-amber"><b>Bubble.</b> '+gap.toFixed(1)+' pts back.</div>';
-  else ac.innerHTML='<div class="callout callout-red"><b>'+(gap>25?'Long shot':'Uphill')+'.</b> '+gap.toFixed(1)+' pts = '+pph+' extra pts/hole needed. Avg odds '+((o.avg||0).toFixed(1))+' vs cashing field '+fieldCashAvg+'.</div>';
+  else ac.innerHTML='<div class="callout callout-red"><b>'+(gap>25?'Long shot':'Uphill')+'.</b> '+gap.toFixed(1)+' pts = '+pph+' pts/hole needed. Avg odds '+((o.avg||0).toFixed(1))+' vs cashing field '+fieldCashAvg+'.</div>';
   const above=ENTRIES.filter(x=>x.r<entry.r&&x.l.length>0);const ov=document.getElementById('sOverlap');
   const od=entry.l.map(p=>{const cnt=above.filter(x=>x.l.includes(p)).length;const isCut=isPlayerCut(p);return{name:p,cnt,pct:above.length?Math.round(cnt/above.length*100):0,odds:ODDS[p],isCut};}).sort((a,b)=>b.pct-a.pct);
   ov.innerHTML=od.map(d=>{const c=d.isCut?'var(--t3)':d.pct>40?'var(--red)':d.pct>20?'var(--amber)':'var(--green)';
@@ -631,6 +716,7 @@ function renderSingle(entry){
   }).join('')+'<div style="font-size:11px;color:#ffffff;margin-top:4px">High overlap = correlated, not an edge</div>';
 }
 
+// ---- COMPARE MODE ----
 let cmpEntries=[],cmpScatterChart=null,cmpOddsChart=null;
 
 function addCompare(name){
@@ -651,28 +737,28 @@ function renderCompare(){
   ranked.forEach((d,i)=>{
     const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
     const tr=document.createElement('tr');
-    tr.innerHTML='<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="How is this calculated?">?</button></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
+    tr.innerHTML='<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="?">?</button></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
     rb.appendChild(tr);
   });
   const cols=document.getElementById('cmpColumns');const nc=cmpEntries.length;cols.style.gridTemplateColumns='repeat('+nc+',1fr)';
   cols.innerHTML=data.map((d,i)=>{
     const ri=ranked.indexOf(d);
-    const withOdds=d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);const noOdds=d.odds.active.filter(x=>x.odds===null);
-    const players=[...withOdds,...noOdds,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
+    const wO=d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);const nO=d.odds.active.filter(x=>x.odds===null);
+    const players=[...wO,...nO,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
     return '<div class="cmp-col"><div class="cmp-rank-badge cmp-rank-'+(ri+1)+'">#'+(ri+1)+'</div>'+
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
       '<div class="cmp-stat"><span class="k">Points</span><span class="v">'+d.entry.p+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Rank</span><span class="v">#'+d.entry.r+'</span></div>'+
-      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="How is this calculated?">?</button></span></div>'+
+      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="?">?</button></span></div>'+
       '<div class="cmp-stat"><span class="k">Gap</span><span class="v">'+(d.gap<=0?'<span style="color:var(--green)">IN</span>':d.gap.toFixed(1))+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Holes</span><span class="v">'+d.entry.h+' ('+Math.round(d.entry.h/36)+')</span></div>'+
       '<div class="cmp-stat"><span class="k">Avg odds</span><span class="v">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</span></div>'+
       '<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">'+
-      players.map(p=>{const isCut=p.isCut===true,hasOdds=p.odds!==null;let od;
-        if(isCut)od='<span class="odds-pill odds-cut" style="font-size:10px">CUT</span>';
-        else if(hasOdds)od='<span class="odds-pill '+oddsClass(p.odds)+'" style="font-size:10px">'+p.odds.toFixed(0)+'</span>';
+      players.map(p=>{const iC=p.isCut===true,hO=p.odds!==null;let od;
+        if(iC)od='<span class="odds-pill odds-cut" style="font-size:10px">CUT</span>';
+        else if(hO)od='<span class="odds-pill '+oddsClass(p.odds)+'" style="font-size:10px">'+p.odds.toFixed(0)+'</span>';
         else od='<span style="font-size:10px;color:#ffffff">-</span>';
-        return '<div class="cmp-player"><span class="pname"'+(isCut?' style="text-decoration:line-through;opacity:.5"':'')+'>'+p.name+'</span>'+od+'</div>';
+        return '<div class="cmp-player"><span class="pname"'+(iC?' style="text-decoration:line-through;opacity:.5"':'')+'>'+p.name+'</span>'+od+'</div>';
       }).join('')+'</div></div>';
   }).join('');
   const ctx=document.getElementById('cmpScatter');if(cmpScatterChart)cmpScatterChart.destroy();
@@ -682,8 +768,8 @@ function renderCompare(){
   const yMax=Math.max(380,...ENTRIES.map(e=>e.p))+10;
   cmpScatterChart=new Chart(ctx,{type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ctx2=document.getElementById('cmpOddsChart');if(cmpOddsChart)cmpOddsChart.destroy();
-  const labels=['Cashing avg','Non-cash avg',...cmpEntries.map(e=>e.n)];const vals=[fieldCashAvg,fieldNonCashAvg,...data.map(d=>d.odds.avg||0)];const bgCols=['#22c55e','#f59e0b',...COLORS.slice(0,nc)];
-  cmpOddsChart=new Chart(ctx2,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:bgCols,borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Avg lineup odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,max:Math.max(450,...vals)+50,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
+  const labels=['Cashing avg','Non-cash avg',...cmpEntries.map(e=>e.n)];const vals=[fieldCashAvg,fieldNonCashAvg,...data.map(d=>d.odds.avg||0)];
+  cmpOddsChart=new Chart(ctx2,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:['#22c55e','#f59e0b',...COLORS.slice(0,nc)],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Avg lineup odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,max:Math.max(450,...vals)+50,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
   const allP=new Set();cmpEntries.forEach(e=>e.l.forEach(p=>allP.add(p)));const shared=[],unique=new Map();
   allP.forEach(p=>{const inW=cmpEntries.map((e,i)=>e.l.includes(p)?i:-1).filter(x=>x>=0);const isCut=isPlayerCut(p);
     if(inW.length>1)shared.push({name:p,in:inW,odds:ODDS[p],isCut});else{const i=inW[0];if(!unique.has(i))unique.set(i,[]);unique.get(i).push({name:p,odds:ODDS[p],isCut});}});
@@ -699,16 +785,16 @@ function renderCompare(){
   sd.innerHTML=h2;
 }
 
+// ---- SEARCH ----
 function wireSearch(inputId,dropId,onSelect){
   const inp=document.getElementById(inputId),drop=document.getElementById(dropId);
   inp.addEventListener('input',function(){const q=this.value.toLowerCase().trim();if(q.length<1){drop.classList.remove('show');return;}
     const m=ENTRIES.filter(e=>e.n.toLowerCase().includes(q)).slice(0,40);if(!m.length){drop.classList.remove('show');return;}
-    drop.innerHTML=m.map(e=>{const cls=e.p>=CASH?' cash':'';return '<div class="dropdown-item'+cls+'" data-name="'+e.n+'" data-rank="'+e.r+'"><span>'+e.n+'</span><span><span class="rank">#'+e.r+'</span> <span class="pts">'+e.p+'</span></span></div>';}).join('');
+    drop.innerHTML=m.map(e=>'<div class="dropdown-item'+(e.p>=CASH?' cash':'')+'" data-name="'+e.n+'"><span>'+e.n+'</span><span><span class="rank">#'+e.r+'</span> <span class="pts">'+e.p+'</span></span></div>').join('');
     drop.classList.add('show');drop.querySelectorAll('.dropdown-item').forEach(item=>{item.addEventListener('click',function(){const n=this.dataset.name;drop.classList.remove('show');inp.value='';onSelect(n);});});});
   inp.addEventListener('focus',function(){if(this.value.length>=1)this.dispatchEvent(new Event('input'));});
   document.addEventListener('click',function(ev){if(!ev.target.closest('#'+inputId)&&!ev.target.closest('#'+dropId))drop.classList.remove('show');});
 }
-
 wireSearch('searchSingle','dropSingle',name=>{document.getElementById('searchSingle').value=name;const e=ENTRIES.find(x=>x.n===name);if(e)renderSingle(e);});
 wireSearch('searchCompare','dropCompare',name=>addCompare(name));
 
@@ -718,15 +804,15 @@ function switchTab(tab){
   document.getElementById('compareMode').classList.toggle('hidden',tab!=='compare');
 }
 
+// ---- LIVE ----
 let liveTimer=null,isLive=false;
-function toggleLive(){if(isLive){stopLive();}else{startLive();}}
+function toggleLive(){if(isLive)stopLive();else startLive();}
 
 function startLive(){
   isLive=true;document.getElementById('liveBtn').textContent='Stop Live';document.getElementById('liveBtn').style.background='var(--red)';
   document.getElementById('liveLeaderboard').classList.remove('hidden');fetchLive();
   liveTimer=setInterval(fetchLive,parseInt(document.getElementById('pollInterval').value)*1000);
 }
-
 function stopLive(){
   isLive=false;if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
   document.getElementById('liveBtn').textContent='Start Live';document.getElementById('liveBtn').style.background='var(--green)';
@@ -740,22 +826,21 @@ async function fetchLive(){
     const resp=await fetch(VERCEL_URL+'/api/leaderboard',{signal:controller.signal});clearTimeout(timeout);
     if(!resp.ok)throw new Error('HTTP '+resp.status);const data=await resp.json();if(data.error)throw new Error(data.error);
     renderLiveLeaderboard(data);
-    let scoresUpdated=0;
-    if(data.players){data.players.forEach(p=>{const score=parseInt(p.total);if(!isNaN(score)){PLAYER_SCORES[p.name]=score;scoresUpdated++;}});}
-    let oddsUpdated=0;
+    let scoresUpdated=0,oddsUpdated=0;
     if(data.players){
+      // Store scores
+      data.players.forEach(p=>{const score=parseInt(p.total);if(!isNaN(score)){PLAYER_SCORES[p.name]=score;scoresUpdated++;}});
+      // Apply cut line against fresh scores
+      if(CUT_LINE!==null){applyCutLineToScores();}
+      // Update odds
       const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');const oddsKeyMap={};Object.keys(ODDS).forEach(k=>{oddsKeyMap[norm(k)]=k;});
-      data.players.forEach(p=>{if(p.odds!==null&&p.odds>0){const nName=norm(p.name);const existingKey=oddsKeyMap[nName];if(existingKey){ODDS[existingKey]=p.odds;}else{ODDS[p.name]=p.odds;oddsKeyMap[nName]=p.name;}oddsUpdated++;}});
-      if(oddsUpdated>0||scoresUpdated>0){
-        recomputeFieldAvgs();const sName=document.getElementById('searchSingle').value;const sEntry=ENTRIES.find(x=>x.n===sName);
-        if(sEntry&&!document.getElementById('singleDash').classList.contains('hidden'))renderSingle(sEntry);
-        if(cmpEntries.length>=2&&!document.getElementById('cmpDash').classList.contains('hidden'))renderCompare();saveToStorage();
-      }
+      data.players.forEach(p=>{if(p.odds!==null&&p.odds>0){const nName=norm(p.name);const ek=oddsKeyMap[nName];if(ek){ODDS[ek]=p.odds;}else{ODDS[p.name]=p.odds;oddsKeyMap[nName]=p.name;}oddsUpdated++;}});
+      if(oddsUpdated>0||scoresUpdated>0){recomputeFieldAvgs();refreshViews();saveToStorage();}
     }
     const now=new Date();
     document.getElementById('liveStatus').textContent='Live — '+data.playerCount+' players'+(oddsUpdated>0?' — '+oddsUpdated+' odds':'')+(CUT_PLAYERS.size>0?' — '+CUT_PLAYERS.size+' cut':'')+' — '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     document.getElementById('liveStatus').style.color='var(--green)';
-    document.getElementById('timestamp').textContent='Data from '+formatUploadTime(lastUploadTime)+' (live '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+')';
+    document.getElementById('timestamp').textContent='Data from '+fmt(lastUploadTime)+' (live '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+')';
   }catch(err){
     const msg=err.name==='TypeError'?'Network error — check connection or proxy':err.message;
     document.getElementById('liveStatus').innerHTML='Error: '+msg+' <button onclick="fetchLive()" style="margin-left:8px;padding:2px 8px;font-size:11px">Retry</button>';
@@ -781,13 +866,13 @@ function renderLiveLeaderboard(data){
   }).join('');
 }
 
+// ---- INIT ----
 (function init(){
   const stored=loadFromStorage();
   if(stored){
     loadData(stored,true);
     document.getElementById('singleEmpty').innerHTML='<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Data loaded from previous session</div><div style="font-size:13px">Search for any entry or upload new CSV</div>';
-    const dm=ENTRIES.find(x=>x.n.toLowerCase().includes('drinkmilk'));
-    if(dm){document.getElementById('searchSingle').value=dm.n;renderSingle(dm);}
+    autoLoadDrinkMilk(); // <-- load DrinkMilk on page open
   }else{
     document.getElementById('timestamp').textContent='Upload CSV to begin';
   }
