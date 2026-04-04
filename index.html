@@ -182,7 +182,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <label>Cut line (to par)</label>
   <input type="number" id="cutLineInput" value="" placeholder="+2" style="width:70px">
   <button onclick="updateCutLine()">Apply</button>
-  <span style="font-size:11px;color:var(--t3);margin-left:4px">auto-marks cut from live scores</span>
+  <span style="font-size:11px;color:var(--t3);margin-left:4px">manual override (live auto-detects cuts)</span>
   <label style="margin-left:16px">Also mark by name</label>
   <input type="text" id="cutPlayersInput" placeholder="Mitchell, Smith, Henley..." style="width:240px">
   <button onclick="applyCutPlayerNames()">Mark Cut</button>
@@ -377,16 +377,24 @@ const VERCEL_URL='https://golf-proxy.vercel.app';
 const STORAGE_KEY='weLoveStevieDashboard'; // FIX 1: was _v4, broke session persistence
 
 let CASH=222,CASH_HISTORY=[],TOTAL=0,ODDS={},FREQ={},ENTRIES=[];
-let CUT_PLAYERS=new Set();
+let CUT_MANUAL=new Set();  // user-entered cuts (persist until user clears)
+let CUT_LIVE=new Set();    // live-feed-derived cuts (rebuilt from scratch on every fetch)
+let CUT_PLAYERS=new Set(); // computed union of CUT_MANUAL ∪ CUT_LIVE — used by all downstream code
 let CUT_LINE=null;
 let PLAYER_SCORES={};
 let fieldCashAvg=0,fieldNonCashAvg=0,lastUploadTime=null;
 let currentSingleEntry=null;
 
+function rebuildCutPlayers(){
+  CUT_PLAYERS=new Set([...CUT_MANUAL,...CUT_LIVE]);
+  updateCutStatus();
+}
+
 function saveToStorage(){
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify({
     entries:ENTRIES,odds:ODDS,freq:FREQ,cashLine:CASH,cashHistory:CASH_HISTORY,total:TOTAL,
-    cutPlayers:Array.from(CUT_PLAYERS),cutLine:CUT_LINE,playerScores:PLAYER_SCORES,
+    cutManual:Array.from(CUT_MANUAL),cutLive:Array.from(CUT_LIVE),
+    cutLine:CUT_LINE,playerScores:PLAYER_SCORES,
     uploadTime:lastUploadTime,
     tournament:document.getElementById('tournamentInput').value.trim(),
     cutPlayersInput:document.getElementById('cutPlayersInput').value
@@ -409,36 +417,59 @@ function updateCutStatus(){
   const el=document.getElementById('cutStatus');if(el)el.textContent=CUT_PLAYERS.size>0?CUT_PLAYERS.size+' cut':'';
 }
 
-// FIX 2: No fuzzy matching, no normalization.
-// Try full-name match first. Fall back to last-name only when that last name is unique in PLAYER_SCORES.
+// FIX 2: Use live feed STATUS (CUT/WD/WITHDRAWN), NOT score-vs-threshold.
+// Score comparison is wrong — a player who made the R2 cut at +1 might be +5 in R3.
+// Rebuilds CUT_LIVE from scratch on every call — false cuts auto-correct.
+function applyCutsFromLiveStatus(players){
+  if(!players||!players.length)return;
+  CUT_LIVE.clear(); // ← key difference: rebuild, don't accumulate
+  const lastNameCount={};
+  players.forEach(p=>{const ln=p.name.split(' ').pop().toLowerCase();lastNameCount[ln]=(lastNameCount[ln]||0)+1;});
+  const cutStatuses=new Set(['CUT','WITHDRAWN','WD']);
+  const lineupNames=new Set();
+  ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
+  lineupNames.forEach(lineupName=>{
+    const lnLower=lineupName.toLowerCase();
+    // 1) Full-name match
+    for(const p of players){
+      if(p.name.toLowerCase()===lnLower){
+        if(cutStatuses.has(p.status))CUT_LIVE.add(lineupName);
+        return; // found the player — done either way
+      }
+    }
+    // 2) Last-name fallback ONLY if unique in the live feed
+    const last=lineupName.split(' ').pop().toLowerCase();
+    if((lastNameCount[last]||0)>1)return;
+    for(const p of players){
+      if(p.name.split(' ').pop().toLowerCase()===last){
+        if(cutStatuses.has(p.status))CUT_LIVE.add(lineupName);
+        return;
+      }
+    }
+  });
+  rebuildCutPlayers();
+}
+
+// Manual to-par cut line — only runs on user Apply click, adds to CUT_MANUAL
 function applyCutLineToScores(){
   if(CUT_LINE===null)return;
   const scoreEntries=Object.entries(PLAYER_SCORES);
-  // Pre-compute last-name frequency in live scores
   const lastNameCount={};
   scoreEntries.forEach(([name])=>{const ln=name.split(' ').pop().toLowerCase();lastNameCount[ln]=(lastNameCount[ln]||0)+1;});
   const lineupNames=new Set();
   ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
   lineupNames.forEach(lineupName=>{
     const lnLower=lineupName.toLowerCase();
-    // 1) Full-name match (case-insensitive)
     for(const [liveName,score] of scoreEntries){
-      if(liveName.toLowerCase()===lnLower && score>CUT_LINE){
-        CUT_PLAYERS.add(lineupName);
-        return;
-      }
+      if(liveName.toLowerCase()===lnLower && score>CUT_LINE){CUT_MANUAL.add(lineupName);return;}
     }
-    // 2) Last-name match ONLY if that last name is unique in live scores
     const last=lineupName.split(' ').pop().toLowerCase();
-    if((lastNameCount[last]||0)>1)return; // Kim, Lee, Park etc — skip, require manual
+    if((lastNameCount[last]||0)>1)return;
     for(const [liveName,score] of scoreEntries){
-      if(liveName.split(' ').pop().toLowerCase()===last && score>CUT_LINE){
-        CUT_PLAYERS.add(lineupName);
-        return;
-      }
+      if(liveName.split(' ').pop().toLowerCase()===last && score>CUT_LINE){CUT_MANUAL.add(lineupName);return;}
     }
   });
-  updateCutStatus();
+  rebuildCutPlayers();
 }
 
 function updateCutLine(){
@@ -456,18 +487,18 @@ function applyCutPlayerNames(){
   const allNames=new Set();
   ENTRIES.forEach(e=>e.l.forEach(p=>allNames.add(p)));Object.keys(ODDS).forEach(p=>allNames.add(p));
   fragments.forEach(frag=>{
-    allNames.forEach(p=>{if(p.toLowerCase().includes(frag))CUT_PLAYERS.add(p);});
+    allNames.forEach(p=>{if(p.toLowerCase().includes(frag))CUT_MANUAL.add(p);});
   });
-  updateCutStatus();recomputeFieldAvgs();saveToStorage();
+  rebuildCutPlayers();recomputeFieldAvgs();saveToStorage();
   refreshViews();
   showStatus('Marked '+CUT_PLAYERS.size+' player(s) cut.',true);
 }
 
 function clearAllCuts(){
-  CUT_PLAYERS.clear();CUT_LINE=null;
+  CUT_MANUAL.clear();CUT_LIVE.clear();CUT_LINE=null;
   document.getElementById('cutLineInput').value='';
   document.getElementById('cutPlayersInput').value='';
-  updateCutStatus();recomputeFieldAvgs();saveToStorage();refreshViews();
+  rebuildCutPlayers();recomputeFieldAvgs();saveToStorage();refreshViews();
 }
 
 function refreshViews(){
@@ -482,7 +513,17 @@ function refreshViews(){
 // ---- LOAD DATA ----
 function loadData(d,fromStorage=false){
   CASH=d.cashLine||CASH;CASH_HISTORY=d.cashHistory||[];TOTAL=d.total;ODDS=d.odds;FREQ=d.freq;ENTRIES=d.entries;
-  CUT_PLAYERS=new Set(d.cutPlayers||[]);CUT_LINE=d.cutLine!==undefined?d.cutLine:null;PLAYER_SCORES=d.playerScores||{};
+  // Restore cut sets — backward compat: old format had single cutPlayers array
+  if(d.cutManual){
+    CUT_MANUAL=new Set(d.cutManual);
+    CUT_LIVE=new Set(d.cutLive||[]);
+  }else{
+    // Old storage format: treat old cuts as live-derived (rebuilt on first fetch, false cuts vanish)
+    CUT_MANUAL=new Set();
+    CUT_LIVE=new Set(d.cutPlayers||[]);
+  }
+  CUT_LINE=d.cutLine!==undefined?d.cutLine:null;PLAYER_SCORES=d.playerScores||{};
+  rebuildCutPlayers();
   if(d.uploadTime)lastUploadTime=d.uploadTime;
   if(d.tournament)document.getElementById('tournamentInput').value=d.tournament;
   if(d.cutPlayersInput)document.getElementById('cutPlayersInput').value=d.cutPlayersInput;
@@ -597,10 +638,11 @@ function handleFile(file){
   reader.onload=function(e){
     try{
       const data=parseCSV(e.target.result);lastUploadTime=new Date().toISOString();data.uploadTime=lastUploadTime;
-      data.cutPlayers=Array.from(CUT_PLAYERS);
+      data.cutManual=Array.from(CUT_MANUAL); // preserve manual cuts across reloads
+      data.cutLive=Array.from(CUT_LIVE);
       data.cutLine=CUT_LINE;data.playerScores=PLAYER_SCORES;
       loadData(data);
-      if(CUT_LINE!==null&&Object.keys(PLAYER_SCORES).length>0){applyCutLineToScores();recomputeFieldAvgs();}
+      // Cuts will be auto-detected from live feed status on next fetch
       autoLoadDrinkMilk(); // FIX 3: after loadData completes
       showStatus('Loaded '+data.total+' entries, '+Object.keys(data.odds).length+' players with odds.',true);
     }catch(err){showStatus('Parse error: '+err.message,false);}
@@ -833,8 +875,8 @@ async function fetchLive(){
     if(data.players){
       // Store scores keyed by player name
       data.players.forEach(p=>{const score=parseInt(p.total);if(!isNaN(score)){PLAYER_SCORES[p.name]=score;scoresUpdated++;}});
-      // Apply cut line against fresh scores on every fetch
-      if(CUT_LINE!==null){applyCutLineToScores();}
+      // Mark cuts from live feed STATUS (not score comparison)
+      applyCutsFromLiveStatus(data.players);
       // Update odds — use NFD normalization for odds matching only (not cut logic)
       const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');const oddsKeyMap={};Object.keys(ODDS).forEach(k=>{oddsKeyMap[norm(k)]=k;});
       data.players.forEach(p=>{if(p.odds!==null&&p.odds>0){const nName=norm(p.name);const ek=oddsKeyMap[nName];if(ek){ODDS[ek]=p.odds;}else{ODDS[p.name]=p.odds;oddsKeyMap[nName]=p.name;}oddsUpdated++;}});
