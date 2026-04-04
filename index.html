@@ -409,19 +409,32 @@ function updateCutStatus(){
   const el=document.getElementById('cutStatus');if(el)el.textContent=CUT_PLAYERS.size>0?CUT_PLAYERS.size+' cut':'';
 }
 
-// FIX 2: Simple last-name match. No fuzzy matching, no normalization.
-// For each lineup player, find matching live score by last name, mark cut if score > CUT_LINE.
+// FIX 2: No fuzzy matching, no normalization.
+// Try full-name match first. Fall back to last-name only when that last name is unique in PLAYER_SCORES.
 function applyCutLineToScores(){
   if(CUT_LINE===null)return;
   const scoreEntries=Object.entries(PLAYER_SCORES);
+  // Pre-compute last-name frequency in live scores
+  const lastNameCount={};
+  scoreEntries.forEach(([name])=>{const ln=name.split(' ').pop().toLowerCase();lastNameCount[ln]=(lastNameCount[ln]||0)+1;});
   const lineupNames=new Set();
   ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
   lineupNames.forEach(lineupName=>{
+    const lnLower=lineupName.toLowerCase();
+    // 1) Full-name match (case-insensitive)
+    for(const [liveName,score] of scoreEntries){
+      if(liveName.toLowerCase()===lnLower && score>CUT_LINE){
+        CUT_PLAYERS.add(lineupName);
+        return;
+      }
+    }
+    // 2) Last-name match ONLY if that last name is unique in live scores
     const last=lineupName.split(' ').pop().toLowerCase();
+    if((lastNameCount[last]||0)>1)return; // Kim, Lee, Park etc — skip, require manual
     for(const [liveName,score] of scoreEntries){
       if(liveName.split(' ').pop().toLowerCase()===last && score>CUT_LINE){
         CUT_PLAYERS.add(lineupName);
-        break;
+        return;
       }
     }
   });
