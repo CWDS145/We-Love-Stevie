@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{--bg:#0c0f14;--bg2:#141820;--bg3:#1a1f2a;--card:#171c26;--border:#2a3040;--border2:#3a4560;--t1:#ffffff;--t2:#ffffff;--t3:#ffffff;--green:#22c55e;--green-bg:rgba(34,197,94,.12);--green-t:#16a34a;--red:#ef4444;--red-bg:rgba(239,68,68,.12);--red-t:#f87171;--amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);--amber-t:#fbbf24;--blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);--blue-t:#60a5fa;--purple:#a855f7;--purple-bg:rgba(168,85,247,.12);--purple-t:#c084fc;--teal:#14b8a6;--teal-bg:rgba(20,184,166,.12);--teal-t:#5eead4;--r:8px;--r2:12px;--font:'DM Sans',system-ui,sans-serif;--mono:'JetBrains Mono',monospace}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -124,9 +125,9 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 
 <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
   <div class="icon">&#128228;</div>
-  <div class="title">Drop updated CSV here or click to upload</div>
-  <div class="hint">Same format as DraftKings export — Rank, EntryName, Points, Lineup, Betting Odds columns</div>
-  <input type="file" id="fileInput" accept=".csv,.txt">
+  <div class="title">Drop updated CSV or ZIP here or click to upload</div>
+  <div class="hint">DraftKings contest export — CSV or ZIP. Odds from live feed only.</div>
+  <input type="file" id="fileInput" accept=".csv,.txt,.zip">
 </div>
 <div id="uploadStatus" class="hidden"></div>
 
@@ -164,11 +165,8 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <label>Tournament</label>
   <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:200px">
   <button onclick="updateTournament()">Set</button>
-  <label style="margin-left:8px">Cash line (pts)</label>
-  <input type="number" id="cashLineInput" value="222" step="0.5">
-  <button onclick="updateCashLine()">Apply</button>
-  <span id="cashHistoryInfo" style="font-size:12px;margin-left:8px"></span>
-  <button onclick="clearCashHistory()" style="margin-left:4px;font-size:11px;padding:4px 8px">Clear History</button>
+  <span style="margin-left:12px;font-size:13px;color:var(--amber-t);font-family:var(--mono);font-weight:600">Cash line: <span id="cashLineDisplay">—</span> pts</span>
+  <span style="font-size:11px;color:var(--t3);margin-left:6px">(auto: top 45%)</span>
 </div>
 
 <div class="config-row">
@@ -309,7 +307,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 const VERCEL_URL='https://golf-proxy.vercel.app';
 const STORAGE_KEY='weLoveStevieDashboard'; // FIX 1: was _v4, broke session persistence
 
-let CASH=222,CASH_HISTORY=[],TOTAL=0,ODDS={},FREQ={},ENTRIES=[];
+let CASH=222,TOTAL=0,ODDS={},FREQ={},ENTRIES=[];
 let CUT_MANUAL=new Set();  // user-entered cuts (persist until user clears)
 let CUT_LIVE=new Set();    // live-feed-derived cuts (rebuilt from scratch on every fetch)
 let CUT_PLAYERS=new Set(); // computed union of CUT_MANUAL ∪ CUT_LIVE — used by all downstream code
@@ -326,7 +324,7 @@ function rebuildCutPlayers(){
 
 function saveToStorage(){
   try{localStorage.setItem(STORAGE_KEY,JSON.stringify({
-    entries:ENTRIES,odds:ODDS,freq:FREQ,cashLine:CASH,cashHistory:CASH_HISTORY,total:TOTAL,
+    entries:ENTRIES,odds:ODDS,freq:FREQ,cashLine:CASH,total:TOTAL,
     cutManual:Array.from(CUT_MANUAL),cutLive:Array.from(CUT_LIVE),
     cutLine:CUT_LINE,playerScores:PLAYER_SCORES,
     uploadTime:lastUploadTime,
@@ -446,13 +444,15 @@ function refreshViews(){
 
 // ---- LOAD DATA ----
 function loadData(d,fromStorage=false){
-  CASH=d.cashLine||CASH;CASH_HISTORY=d.cashHistory||[];TOTAL=d.total;ODDS=d.odds;FREQ=d.freq;ENTRIES=d.entries;
+  CASH=d.cashLine||CASH;TOTAL=d.total;
+  // Odds: only overwrite if incoming has data (localStorage restore). CSV sends odds:{} — preserve live odds.
+  if(d.odds&&Object.keys(d.odds).length>0)ODDS=d.odds;
+  FREQ=d.freq;ENTRIES=d.entries;
   // Restore cut sets — backward compat: old format had single cutPlayers array
   if(d.cutManual){
     CUT_MANUAL=new Set(d.cutManual);
     CUT_LIVE=new Set(d.cutLive||[]);
   }else{
-    // Old storage format: treat old cuts as live-derived (rebuilt on first fetch, false cuts vanish)
     CUT_MANUAL=new Set();
     CUT_LIVE=new Set(d.cutPlayers||[]);
   }
@@ -461,9 +461,9 @@ function loadData(d,fromStorage=false){
   if(d.uploadTime)lastUploadTime=d.uploadTime;
   if(d.tournament)document.getElementById('tournamentInput').value=d.tournament;
   if(d.cutPlayersInput)document.getElementById('cutPlayersInput').value=d.cutPlayersInput;
-  document.getElementById('cashLineInput').value=CASH;
+  document.getElementById('cashLineDisplay').textContent=CASH;
   document.getElementById('cutLineInput').value=CUT_LINE!==null?CUT_LINE:'';
-  updateCutStatus();recomputeFieldAvgs();updateCashHistoryDisplay();
+  updateCutStatus();recomputeFieldAvgs();
   const tourney=document.getElementById('tournamentInput').value.trim();
   document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
   if(lastUploadTime){
@@ -497,41 +497,11 @@ function recomputeFieldAvgs(){
   fieldCashAvg=cN?Math.round(cS/cN*10)/10:200;fieldNonCashAvg=nN?Math.round(nS/nN*10)/10:300;
 }
 
-function updateCashLine(){
-  const v=parseFloat(document.getElementById('cashLineInput').value);if(isNaN(v)||v<=0)return;CASH=v;
-  const maxHoles=ENTRIES.length?Math.max(...ENTRIES.map(e=>e.h)):0;
-  CASH_HISTORY.push({value:v,time:Date.now(),maxHoles});recomputeFieldAvgs();updateCashHistoryDisplay();
-  const tourney=document.getElementById('tournamentInput').value.trim();
-  document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
-  refreshViews();saveToStorage();
-}
-
-function getProjectedCashLine(){
-  const currentMax=ENTRIES.length?Math.max(...ENTRIES.map(e=>e.h)):0;const holesRemaining=432-currentMax;
-  if(CASH_HISTORY.length<2)return{projected:CASH,rate:0,holesRemaining,confidence:'low'};
-  const sorted=[...CASH_HISTORY].sort((a,b)=>a.maxHoles-b.maxHoles);const first=sorted[0],last=sorted[sorted.length-1];
-  const holeDiff=last.maxHoles-first.maxHoles;const ptsDiff=last.value-first.value;
-  if(holeDiff<=0)return{projected:CASH,rate:0,holesRemaining,confidence:'low'};
-  const ratePerHole=ptsDiff/holeDiff;const projectedCash=CASH+(ratePerHole*holesRemaining);
-  let confidence='low';if(CASH_HISTORY.length>=3&&holeDiff>=36)confidence='medium';if(CASH_HISTORY.length>=4&&holeDiff>=72)confidence='high';
-  return{projected:Math.round(projectedCash*10)/10,rate:Math.round(ratePerHole*1000)/1000,holesRemaining,confidence};
-}
-
-function updateCashHistoryDisplay(){
-  const el=document.getElementById('cashHistoryInfo');if(!el)return;
-  if(CASH_HISTORY.length<2){el.innerHTML='<span style="color:#888">Need 2+ to project</span>';return;}
-  const proj=getProjectedCashLine();const arrow=proj.rate>0?'↑':proj.rate<0?'↓':'→';
-  const color=proj.rate>0.3?'var(--red)':proj.rate>0.1?'var(--amber)':'var(--green)';
-  el.innerHTML=`<span style="color:${color}">${arrow} ${Math.abs(proj.rate).toFixed(2)} pts/hole</span> → <strong style="color:${color}">${proj.projected}</strong> <span style="color:#888">(${proj.holesRemaining}h left, ${proj.confidence})</span>`;
-}
-
 function updateTournament(){
   const tourney=document.getElementById('tournamentInput').value.trim();
   if(TOTAL>0)document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
   saveToStorage();
 }
-
-function clearCashHistory(){CASH_HISTORY=[];updateCashHistoryDisplay();saveToStorage();}
 
 // ---- CSV PARSE ----
 function parseCSV(text){
@@ -561,11 +531,9 @@ function parseCSV(text){
   const colPts=find(['points','pts']);
   const colTime=find(['timeremaining','timeremain','holes']);
   const colLineup=find(['lineup']);
-  const colPlayer=find(['player']);
-  const colOdds=find(['bettingodds','odds']);
 
   // Build diagnostic for what we found/missed
-  const diag={delim,cols:h.length,matched:{rank:colRank,name:colName,pts:colPts,time:colTime,lineup:colLineup,player:colPlayer,odds:colOdds}};
+  const diag={delim,cols:h.length,matched:{rank:colRank,name:colName,pts:colPts,time:colTime,lineup:colLineup}};
 
   if(!colRank||!colName||!colPts){
     const found=h.slice(0,15).join(', ');
@@ -574,18 +542,7 @@ function parseCSV(text){
     throw new Error('Missing column(s): '+missing.join(', ')+'. Delimiter="'+delim+'", '+h.length+' columns detected. First headers: '+found);
   }
 
-  // Parse odds
-  const odds={};
-  if(colPlayer&&colOdds){
-    rows.forEach(r=>{
-      const p=(r[colPlayer]||'').trim();
-      const o=(r[colOdds]||'').trim();
-      if(p&&o&&o!=='#N/A'&&o!=='N/A'&&o!==''){
-        const v=parseFloat(o.replace(/[,\s]/g,''));
-        if(!isNaN(v)&&v>0&&!odds[p])odds[p]=Math.round(v*100)/100;
-      }
-    });
-  }
+  // Odds come from live feed only — not parsed from CSV
 
   // Parse lineup: try multiple patterns
   function parseLineup(s){
@@ -622,16 +579,26 @@ function parseCSV(text){
   const total=entries.length;
   const freqPct={};Object.keys(freq).forEach(p=>{freqPct[p]=Math.round(freq[p]/total*1000)/10;});
 
+  // Auto-detect cash line: top 45% of entries (50/50 with ~10% vig)
+  const sortedPts=[...entries].sort((a,b)=>b.p-a.p);
+  const cashIdx=Math.floor(total*0.45);
+  let autoCashLine=sortedPts.length>cashIdx?sortedPts[cashIdx].p:0;
+  // Tie compression: if entries just below cutoff share the same score,
+  // the bubble is ambiguous — bump to the next higher unique score
+  if(cashIdx<sortedPts.length-1&&sortedPts[cashIdx+1]&&sortedPts[cashIdx+1].p===autoCashLine){
+    for(let i=cashIdx-1;i>=0;i--){
+      if(sortedPts[i].p>autoCashLine){autoCashLine=sortedPts[i].p;break;}
+    }
+  }
+
   // Attach diagnostics for handleFile to report
   const warnings=[];
   if(!colLineup)warnings.push('No Lineup column found — player breakdowns unavailable.');
   else if(emptyLineups>total*0.9)warnings.push(emptyLineups+'/'+total+' entries have empty lineups. The Lineup column may be corrupted — was the CSV opened in Excel before uploading? Try re-downloading from DraftKings without opening.');
-  if(!colPlayer||!colOdds)warnings.push('No Player/Odds columns — betting odds unavailable.');
-  else if(Object.keys(odds).length===0)warnings.push('Odds column found but 0 valid odds parsed. Values may be corrupted.');
   if(zeroPoints>total*0.5)warnings.push(zeroPoints+'/'+total+' entries have 0 points — Points column may be misread.');
   if(delim!==',')warnings.push('Non-standard delimiter detected: "'+(delim==='\t'?'TAB':delim)+'". CSV may have been modified.');
 
-  return{entries,odds,freq:freqPct,total,cashLine:CASH,warnings,diag};
+  return{entries,odds:{},freq:freqPct,total,cashLine:autoCashLine,warnings,diag};
 }
 
 // ---- FILE HANDLING ----
@@ -644,30 +611,55 @@ function showStatus(msg,ok){
   if(ok)setTimeout(()=>statusDiv.classList.add('hidden'),8000);
 }
 
+function processCSVText(text,sourceLabel){
+  try{
+    const data=parseCSV(text);lastUploadTime=new Date().toISOString();data.uploadTime=lastUploadTime;
+    data.cutManual=Array.from(CUT_MANUAL);
+    data.cutLive=Array.from(CUT_LIVE);
+    data.cutLine=CUT_LINE;data.playerScores=PLAYER_SCORES;
+    loadData(data);
+    autoLoadDrinkMilk();
+
+    let msg='Loaded '+data.total+' entries from '+sourceLabel+'. Cash line auto-detected: '+data.cashLine+' pts.';
+    const playersInLineups=Object.keys(data.freq).length;
+    msg+=' '+playersInLineups+' unique players. Odds from live feed.';
+    const oddsCount=Object.keys(ODDS).length;
+    if(oddsCount>0)msg+=' '+oddsCount+' players with live odds.';
+    else msg+=' Start live feed to pull odds.';
+
+    if(data.warnings&&data.warnings.length){
+      msg+='<br><br><strong style="color:var(--amber-t)">⚠ Warnings:</strong><br>'+data.warnings.map(w=>'• '+w).join('<br>');
+      showStatus(msg,false);
+    }else{
+      showStatus(msg,true);
+    }
+  }catch(err){showStatus('Parse error: '+err.message,false);}
+}
+
 function handleFile(file){
-  if(!file)return;const reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      const data=parseCSV(e.target.result);lastUploadTime=new Date().toISOString();data.uploadTime=lastUploadTime;
-      data.cutManual=Array.from(CUT_MANUAL);
-      data.cutLive=Array.from(CUT_LIVE);
-      data.cutLine=CUT_LINE;data.playerScores=PLAYER_SCORES;
-      loadData(data);
-      autoLoadDrinkMilk();
+  if(!file)return;
+  const name=file.name.toLowerCase();
 
-      // Build status message with warnings
-      let msg='Loaded '+data.total+' entries, '+Object.keys(data.odds).length+' players with odds.';
-      const playersInLineups=Object.keys(data.freq).length;
-      msg+=' '+playersInLineups+' unique players in lineups.';
-
-      if(data.warnings&&data.warnings.length){
-        msg+='<br><br><strong style="color:var(--amber-t)">⚠ Warnings:</strong><br>'+data.warnings.map(w=>'• '+w).join('<br>');
-        showStatus(msg,false);
-      }else{
-        showStatus(msg,true);
-      }
-    }catch(err){showStatus('Parse error: '+err.message,false);}
-  };reader.readAsText(file);
+  if(name.endsWith('.zip')){
+    // Extract CSV from ZIP
+    const reader=new FileReader();
+    reader.onload=function(e){
+      JSZip.loadAsync(e.target.result).then(function(zip){
+        // Find first .csv file inside
+        const csvFile=Object.keys(zip.files).find(f=>f.toLowerCase().endsWith('.csv'));
+        if(!csvFile){showStatus('No CSV file found inside ZIP.',false);return;}
+        zip.files[csvFile].async('string').then(function(text){
+          processCSVText(text,file.name+' → '+csvFile);
+        });
+      }).catch(function(err){showStatus('ZIP error: '+err.message,false);});
+    };
+    reader.readAsArrayBuffer(file);
+  }else{
+    // Plain CSV/TXT
+    const reader=new FileReader();
+    reader.onload=function(e){processCSVText(e.target.result,file.name);};
+    reader.readAsText(file);
+  }
 }
 
 fileInput.addEventListener('change',function(){handleFile(this.files[0]);this.value='';});
