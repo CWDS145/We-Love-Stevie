@@ -406,7 +406,6 @@ let currentSingleEntry = null;
 let cmpEntries = [];
 
 // ── CUT LOGIC ──────────────────────────────────────────────────
-// Last-name match only. Scores come from live feed.
 function applyScoreCuts() {
   if (CUT_LINE === null) return;
   ENTRIES.forEach(e => {
@@ -515,7 +514,6 @@ function loadData(d, fromStorage = false) {
   if (!fromStorage) saveToStorage();
 }
 
-// Always called after loadData to show DrinkMilk
 function autoLoadDrinkMilk() {
   const dm = ENTRIES.find(x => x.n.toLowerCase().includes('drinkmilk'));
   if (dm) {
@@ -596,7 +594,7 @@ function updateTournament() {
 
 function clearCashHistory() { CASH_HISTORY = []; updateCashHistoryDisplay(); saveToStorage(); }
 
-// ── CSV PARSE ──────────────────────────────────────────────────
+// ── CSV PARSE (fix v1 — manual header + rows ref) ─────────────
 function parseCSV(text) {
   const cleaned = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
   const result = Papa.parse(cleaned, {
@@ -608,12 +606,15 @@ function parseCSV(text) {
     relaxQuotes: true,
     relaxColumnCount: true
   });
-  const h = result.meta.fields;
+  // Manual header parse — bypass PapaParse field detection
+  const firstLine = cleaned.split('\n')[0];
+  const h = firstLine.split(',').map(f => f.trim().replace(/^"|"$/g, ''));
+  const rows = result.data;
   const find = pats => h.find(f => pats.some(p => f.trim().toLowerCase().includes(p)));
   const colRank = find(['rank']), colName = find(['entryname','entry_name','entry name']);
   const colPts = find(['points','pts']), colTime = find(['timeremaining','time_remaining','time remaining','holes']);
   const colLineup = find(['lineup']), colPlayer = find(['player']), colOdds = find(['betting odds','bettingodds','odds']);
-  if (!colRank || !colName || !colPts) throw new Error('Missing columns. Need: Rank, EntryName, Points.');
+  if (!colRank || !colName || !colPts) throw new Error('Missing columns. Need: Rank, EntryName, Points. Found: [' + h.join(', ') + ']');
   const odds = {};
   if (colPlayer && colOdds) {
     rows.forEach(r => {
@@ -660,16 +661,14 @@ function handleFile(file) {
       const data = parseCSV(e.target.result);
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
-      // Preserve cuts & scores across reload
       data.cutPlayers = Array.from(CUT_PLAYERS);
       data.cutLine = CUT_LINE;
       data.playerScores = PLAYER_SCORES;
       loadData(data);
-      // Re-apply score-based cuts against preserved scores
       if (CUT_LINE !== null) applyScoreCuts();
       renderFieldTable();
-      autoLoadDrinkMilk(); // ← load DrinkMilk after every upload
-      recordScoreSnapshot(); // ← snapshot scores for chart
+      autoLoadDrinkMilk();
+      recordScoreSnapshot();
       showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' players with odds.', true);
     } catch(err) { showStatus('Parse error: ' + err.message, false); }
   };
@@ -1029,12 +1028,10 @@ async function fetchLive() {
     renderLiveLeaderboard(data);
     let scoresUpdated = 0, oddsUpdated = 0;
     if (data.players) {
-      // Store scores
       data.players.forEach(p => {
         const score = parseInt(p.total);
         if (!isNaN(score)) { PLAYER_SCORES[p.name] = score; scoresUpdated++; }
       });
-      // Apply cut line against fresh scores — simple last-name match
       if (CUT_LINE !== null) {
         ENTRIES.forEach(e => {
           e.l.forEach(lineupName => {
@@ -1048,7 +1045,6 @@ async function fetchLive() {
         });
         updateCutStatus();
       }
-      // Update odds
       const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       const oddsKeyMap = {};
       Object.keys(ODDS).forEach(k => { oddsKeyMap[norm(k)] = k; });
@@ -1111,14 +1107,13 @@ function getSundayStart() {
   const now = new Date();
   const d = new Date(now);
   d.setHours(0,0,0,0);
-  d.setDate(now.getDate() - now.getDay()); // back to Sunday
+  d.setDate(now.getDate() - now.getDay());
   return d.getTime();
 }
 
 function recordScoreSnapshot() {
   if (!ENTRIES.length) return;
   const sundayStart = getSundayStart();
-  // Wipe if history predates this week's Sunday
   if (SCORE_HISTORY.length > 0 && SCORE_HISTORY[0].time < sundayStart) SCORE_HISTORY = [];
   const now = Date.now();
   const label = new Date(now).toLocaleDateString('en-US',{weekday:'short'}) + ' ' +
@@ -1174,7 +1169,6 @@ function renderScoreChart() {
     tension: 0.3,
     spanGaps: true
   }));
-  // Cash line
   datasets.push({
     label: 'Cash line',
     data: SCORE_HISTORY.map(() => CASH),
@@ -1211,8 +1205,8 @@ function renderScoreChart() {
     loadData(stored, true);
     document.getElementById('singleEmpty').innerHTML = '<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Data loaded from previous session</div><div style="font-size:13px">Search for any entry or upload new CSV</div>';
     renderFieldTable();
-    loadScoreHistory(); // ← restore chart history
-    autoLoadDrinkMilk(); // ← DrinkMilk on page load
+    loadScoreHistory();
+    autoLoadDrinkMilk();
   } else {
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
   }
