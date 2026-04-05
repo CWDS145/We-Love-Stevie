@@ -515,7 +515,10 @@ function parseCSV(text){
   else if(tabs>commas&&tabs>semis)delim='\t';
 
   const result=Papa.parse(text,{header:true,skipEmptyLines:true,delimiter:delim});
-  if(result.errors.length>5)throw new Error('Too many parse errors (delim="'+delim+'"): '+result.errors[0].message);
+  // DK exports are intentionally ragged (player rows have 11 fields, entry-only rows have 9).
+  // Filter out harmless field-count mismatches — only throw on real parse failures.
+  const realErrors=result.errors.filter(e=>e.type!=='FieldMismatch');
+  if(realErrors.length>5)throw new Error('Too many parse errors (delim="'+delim+'"): '+realErrors[0].message);
   const rows=result.data;if(rows.length<10)throw new Error('Only '+rows.length+' rows — check format (delim="'+delim+'")');
 
   // Flexible column matching: trim, lowercase, strip non-alpha for resilience
