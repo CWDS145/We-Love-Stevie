@@ -477,6 +477,7 @@ function loadData(d,fromStorage=false){
 function autoLoadDrinkMilk(){
   const dm=ENTRIES.find(x=>x.n.toLowerCase().includes('drinkmilk'));
   if(dm){
+    switchTab('single');
     document.getElementById('singleDash').classList.remove('hidden');
     document.getElementById('singleEmpty').classList.add('hidden');
     document.getElementById('searchSingle').value=dm.n;
@@ -527,7 +528,8 @@ function parseCSV(text){
   const find=patterns=>h.find(f=>patterns.some(x=>norm(f).includes(x)));
 
   const colRank=find(['rank']);
-  const colName=find(['entryname','entryid'])||find(['entry']);
+  // Name column: exact match to avoid 'EntryId' collision
+  const colName=h.find(f=>{const n=norm(f);return n==='entryname'||n==='entry';});
   const colPts=find(['points','pts']);
   const colTime=find(['timeremaining','timeremain','holes']);
   const colLineup=find(['lineup']);
