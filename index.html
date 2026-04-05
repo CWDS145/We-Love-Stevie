@@ -598,10 +598,10 @@ function clearCashHistory() { CASH_HISTORY = []; updateCashHistoryDisplay(); sav
 
 // ── CSV PARSE ──────────────────────────────────────────────────
 function parseCSV(text) {
-  const result = Papa.parse(text, { header: true, skipEmptyLines: true });
-  if (result.errors.length > 5) throw new Error('Parse errors: ' + result.errors[0].message);
-  const rows = result.data;
-  if (rows.length < 10) throw new Error('Only ' + rows.length + ' rows — check format');
+  const cleaned = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const result = Papa.parse(cleaned, { header: true, skipEmptyLines: 'greedy', delimiter: ',', quoteChar: '"', escapeChar: '"' });
+  const fatalErrors = result.errors.filter(e => e.type === 'Delimiter' || e.type === 'Quotes');
+  if (fatalErrors.length > 0) throw new Error('Parse error: ' + fatalErrors[0].message);
   const h = result.meta.fields;
   const find = pats => h.find(f => pats.some(p => f.trim().toLowerCase().includes(p)));
   const colRank = find(['rank']), colName = find(['entryname','entry_name','entry name']);
