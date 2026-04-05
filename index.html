@@ -123,7 +123,6 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 </head>
 <body>
 <div class="dash">
-
 <div class="header">
   <div><h1>We Love Stevie</h1><div class="sub" id="headerSub">DraftKings</div></div>
   <div style="display:flex;gap:8px;align-items:center"><span class="badge" id="dataBadge" style="background:var(--blue-bg);color:var(--blue-t)">NO DATA</span></div>
@@ -181,13 +180,13 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 
 <div class="config-row">
   <label>Cut line (to par)</label>
-  <input type="number" id="cutLineInput" value="" placeholder="+3" style="width:70px">
+  <input type="number" id="cutLineInput" value="" placeholder="+2" style="width:70px">
   <button onclick="updateCutLine()">Apply</button>
-  <span style="font-size:11px;color:var(--t3);margin-left:4px">Players scoring worse than this are marked CUT (requires live data)</span>
-  <label style="margin-left:16px">Manual cut names</label>
-  <input type="text" id="cutNamesInput" placeholder="Mitchell, Smith..." style="width:200px">
-  <button onclick="applyNameCuts()">Mark Cut</button>
-  <button onclick="clearAllCuts()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Clear All</button>
+  <span style="font-size:11px;color:var(--t3);margin-left:4px">manual override (live auto-detects cuts)</span>
+  <label style="margin-left:16px">Also mark by name</label>
+  <input type="text" id="cutPlayersInput" placeholder="Mitchell, Smith, Henley..." style="width:240px">
+  <button onclick="applyCutPlayerNames()">Mark Cut</button>
+  <button onclick="clearAllCuts()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Clear All Cuts</button>
   <span id="cutStatus" style="font-size:12px;color:var(--amber-t);margin-left:8px"></span>
 </div>
 
@@ -278,798 +277,755 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<!-- FIELD DISTRIBUTION TABLE -->
-<div class="card" style="margin-bottom:16px" id="fieldDistCard">
-  <div class="sec" style="margin-top:0">Field distribution — active players by rank bucket</div>
-  <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:var(--mono)">
-      <thead id="fieldDistHead"></thead>
-      <tbody id="fieldDistBody"></tbody>
-    </table>
-  </div>
+<div class="footer">We Love Stevie Dashboard v5 — Built with Chart.js + PapaParse</div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard — Built with Chart.js + PapaParse</div>
-</div>
-
-<!-- PROB LOGIC MODAL -->
 <div class="modal-overlay" id="probModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal-box">
     <button class="modal-close" onclick="document.getElementById('probModal').classList.remove('open')">&#x2715;</button>
-    <div class="modal-title">Cash probability logic</div>
-    <svg width="100%" viewBox="0 0 680 980" style="display:block">
-    <defs><marker id="arrowM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
-    <rect x="240" y="20" width="200" height="44" rx="8" fill="#1a1f2a" stroke="#3a4560" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#ffffff" x="340" y="42" text-anchor="middle" dominant-baseline="central">Your entry score</text>
-    <rect x="215" y="104" width="250" height="56" rx="8" fill="#26215C" stroke="#534AB7" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#CECBF6" x="340" y="124" text-anchor="middle" dominant-baseline="central">Points &#8805; cash line?</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#AFA9EC" x="340" y="146" text-anchor="middle" dominant-baseline="central">e.p &#8805; CASH</text>
-    <line x1="340" y1="64" x2="340" y2="104" stroke="#3a4560" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <line x1="215" y1="132" x2="100" y2="132" stroke="#185FA5" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#378ADD" x="155" y="124" text-anchor="middle">yes</text>
-    <line x1="100" y1="132" x2="100" y2="210" stroke="#185FA5" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="30" y="210" width="140" height="44" rx="8" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#9FE1CB" x="100" y="228" text-anchor="middle" dominant-baseline="central">Cushion</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#5DCAA5" x="100" y="246" text-anchor="middle" dominant-baseline="central">e.p &#8722; CASH</text>
-    <rect x="30" y="290" width="140" height="44" rx="8" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#9FE1CB" x="100" y="308" text-anchor="middle" dominant-baseline="central">Active players</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#5DCAA5" x="100" y="326" text-anchor="middle" dominant-baseline="central">non-cut w/ odds</text>
-    <line x1="100" y1="254" x2="100" y2="290" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="30" y="370" width="140" height="56" rx="8" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#9FE1CB" x="100" y="390" text-anchor="middle" dominant-baseline="central">Remaining swing</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#5DCAA5" x="100" y="408" text-anchor="middle" dominant-baseline="central">active &#215; holesLeft &#215; 0.5</text>
-    <line x1="100" y1="334" x2="100" y2="370" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="30" y="462" width="140" height="56" rx="8" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#9FE1CB" x="100" y="482" text-anchor="middle" dominant-baseline="central">Swing risk</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#5DCAA5" x="100" y="500" text-anchor="middle" dominant-baseline="central">cushion/(cushion+swing)</text>
-    <line x1="100" y1="426" x2="100" y2="462" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="30" y="554" width="140" height="56" rx="8" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#9FE1CB" x="100" y="574" text-anchor="middle" dominant-baseline="central">Base certainty</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#5DCAA5" x="100" y="592" text-anchor="middle" dominant-baseline="central">(0.55+comp&#215;0.40)&#215;risk</text>
-    <line x1="100" y1="518" x2="100" y2="554" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="30" y="646" width="140" height="76" rx="8" fill="#173404" stroke="#3B6D11" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#C0DD97" x="100" y="666" text-anchor="middle" dominant-baseline="central">Result</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#97C459" x="100" y="684" text-anchor="middle">cushion&gt;50 &#8594; 97%&#215;cert</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#97C459" x="100" y="700" text-anchor="middle">cushion&gt;20 &#8594; 90%&#215;cert</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#97C459" x="100" y="716" text-anchor="middle">cushion&gt;10 &#8594; 80%&#215;cert</text>
-    <line x1="100" y1="610" x2="100" y2="646" stroke="#3B6D11" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <line x1="465" y1="132" x2="580" y2="132" stroke="#A32D2D" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#E24B4A" x="524" y="124" text-anchor="middle">no</text>
-    <line x1="580" y1="132" x2="580" y2="210" stroke="#A32D2D" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="510" y="210" width="140" height="44" rx="8" fill="#4A1B0C" stroke="#993C1D" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#F5C4B3" x="580" y="228" text-anchor="middle" dominant-baseline="central">Gap to cash</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#F0997B" x="580" y="246" text-anchor="middle" dominant-baseline="central">CASH &#8722; e.p</text>
-    <rect x="510" y="290" width="140" height="44" rx="8" fill="#4A1B0C" stroke="#993C1D" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#F5C4B3" x="580" y="308" text-anchor="middle" dominant-baseline="central">Holes left</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#F0997B" x="580" y="326" text-anchor="middle" dominant-baseline="central">maxHoles &#8722; e.h</text>
-    <line x1="580" y1="254" x2="580" y2="290" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="510" y="370" width="140" height="44" rx="8" fill="#4A1B0C" stroke="#993C1D" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#F5C4B3" x="580" y="388" text-anchor="middle" dominant-baseline="central">Pts/hole needed</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#F0997B" x="580" y="406" text-anchor="middle" dominant-baseline="central">gap &#247; holesLeft</text>
-    <line x1="580" y1="334" x2="580" y2="370" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="510" y="450" width="140" height="56" rx="8" fill="#4A1B0C" stroke="#993C1D" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#F5C4B3" x="580" y="470" text-anchor="middle" dominant-baseline="central">Rank factor</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#F0997B" x="580" y="488" text-anchor="middle" dominant-baseline="central">open slots &#247; rivals</text>
-    <line x1="580" y1="414" x2="580" y2="450" stroke="#993C1D" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="510" y="542" width="140" height="44" rx="8" fill="#412402" stroke="#854F0B" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#FAC775" x="580" y="560" text-anchor="middle" dominant-baseline="central">Gap penalty</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#EF9F27" x="580" y="578" text-anchor="middle" dominant-baseline="central">f(pts/hole, completion)</text>
-    <line x1="580" y1="506" x2="580" y2="542" stroke="#854F0B" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="510" y="622" width="140" height="44" rx="8" fill="#26215C" stroke="#534AB7" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#CECBF6" x="580" y="636" text-anchor="middle" dominant-baseline="central">rankFactor</text>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#CECBF6" x="580" y="652" text-anchor="middle" dominant-baseline="central">&#215; gapPenalty</text>
-    <line x1="580" y1="586" x2="580" y2="622" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <rect x="510" y="702" width="140" height="44" rx="8" fill="#501313" stroke="#A32D2D" stroke-width="0.5"/>
-    <text font-family="'DM Sans',sans-serif" font-size="14" font-weight="500" fill="#F7C1C1" x="580" y="720" text-anchor="middle" dominant-baseline="central">1&#8211;60% max</text>
-    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#F09595" x="580" y="738" text-anchor="middle" dominant-baseline="central">capped, never 95%</text>
-    <line x1="580" y1="666" x2="580" y2="702" stroke="#A32D2D" stroke-width="1.5" marker-end="url(#arrowM)"/>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="454" text-anchor="middle">pts/hole &#8594; penalty</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="472" text-anchor="middle">&gt;8 &#8594; 5%</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="490" text-anchor="middle">&gt;5 &#8594; 15%</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="508" text-anchor="middle">&gt;3 &#8594; 30%</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="526" text-anchor="middle">&gt;1.5 &#8594; 50%</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="544" text-anchor="middle">&gt;0.5 &#8594; 70%</text>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="340" y="562" text-anchor="middle">&#8804;0.5 &#8594; 85% &#215; late penalty</text>
-    <rect x="220" y="800" width="10" height="10" rx="2" fill="#0F6E56"/>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#5DCAA5" x="236" y="810">above cash — swing risk model</text>
-    <rect x="220" y="820" width="10" height="10" rx="2" fill="#993C1D"/>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#F0997B" x="236" y="830">below cash — rank/gap model</text>
-    <rect x="220" y="840" width="10" height="10" rx="2" fill="#854F0B"/>
-    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#EF9F27" x="236" y="850">penalty modifier</text>
+    <div class="modal-title">Cash probability model (v3.1) — Score-gap projection</div>
+    <svg width="100%" viewBox="0 0 700 780" style="display:block;margin-bottom:16px">
+    <defs>
+      <marker id="arrowM" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
+    </defs>
+
+    <!-- STEP 1: BLENDED RATE -->
+    <rect x="100" y="16" width="500" height="130" rx="10" fill="#26200A" stroke="#854F0B" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#fbbf24" x="120" y="38" letter-spacing="0.5">STEP 1 — ENTRY-SPECIFIC BLENDED RATE</text>
+    <text font-family="'DM Sans',sans-serif" font-size="12" fill="#B8956A" x="120" y="62">Each entry gets its own projected rate — not a single field average.</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#fbbf24" x="350" y="88" text-anchor="middle">blended_rate = 50% × entry_rate + 50% × field_rate</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="112">entry_rate = pts ÷ (6 players × rounds completed)</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B8956A" x="120" y="130">Shrinkage prevents both full regression and pure extrapolation</text>
+
+    <line x1="350" y1="146" x2="350" y2="178" stroke="#854F0B" stroke-width="1.5" marker-end="url(#arrowM)"/>
+
+    <!-- STEP 2: PROJECT MY FINAL -->
+    <rect x="100" y="178" width="500" height="100" rx="10" fill="#04342C" stroke="#0F6E56" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#22c55e" x="120" y="200" letter-spacing="0.5">STEP 2 — PROJECT MY FINAL SCORE</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#5eead4" x="350" y="232" text-anchor="middle">my_projected = current_pts + (holes_left/18) × blended_rate</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#5DCAA5" x="120" y="258">holes_left / 18 = remaining player-rounds (direct from DK data)</text>
+    <rect x="460" y="242" width="130" height="32" rx="6" fill="#173404" stroke="#3B6D11" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="10" font-weight="600" fill="#97C459" x="525" y="263" text-anchor="middle">5 active &gt; 4 = edge</text>
+
+    <line x1="350" y1="278" x2="350" y2="310" stroke="#0F6E56" stroke-width="1.5" marker-end="url(#arrowM)"/>
+
+    <!-- STEP 3: CASH LINE PROJECTION -->
+    <rect x="100" y="310" width="500" height="120" rx="10" fill="#1a1540" stroke="#534AB7" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#60a5fa" x="120" y="332" letter-spacing="0.5">STEP 3 — PROJECT THE CASH LINE FORWARD</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#CECBF6" x="350" y="362" text-anchor="middle">proj_cash = CASH + avg_remPR_near × avg_rate_near</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#AFA9EC" x="120" y="392">Anchored to YOUR cash line — grown at the rate of entries near the threshold</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#AFA9EC" x="120" y="410">These ±50 entries around rank 50% determine where the cash line ends up</text>
+
+    <line x1="350" y1="430" x2="350" y2="462" stroke="#534AB7" stroke-width="1.5" marker-end="url(#arrowM)"/>
+
+    <!-- STEP 4: MARGIN + UNCERTAINTY -->
+    <rect x="100" y="462" width="500" height="130" rx="10" fill="#2D0A3E" stroke="#7C3AED" stroke-width="0.5"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#c084fc" x="120" y="484" letter-spacing="0.5">STEP 4 — MARGIN vs UNCERTAINTY → PROBABILITY</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#e9d5ff" x="350" y="514" text-anchor="middle">margin = my_projected − proj_cash</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" fill="#e9d5ff" x="350" y="538" text-anchor="middle">σ = 20 × √(player_rounds_remaining)</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="13" font-weight="600" fill="#ffffff" x="350" y="568" text-anchor="middle">P(cash) = Φ( margin / σ )</text>
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#B693DB" x="120" y="588">σ=20 per player-round captures scoring variance + model uncertainty</text>
+
+    <!-- EXAMPLE -->
+    <line x1="350" y1="592" x2="350" y2="624" stroke="#7C3AED" stroke-width="1.5" marker-end="url(#arrowM)"/>
+
+    <rect x="70" y="624" width="560" height="144" rx="10" fill="#1a1f2a" stroke="#3a4560" stroke-width="0.8"/>
+    <text font-family="'DM Sans',sans-serif" font-size="12" font-weight="700" fill="#fbbf24" x="90" y="646" letter-spacing="0.5">EXAMPLE: Sawgrass R3, CASH=278, proj cash line ≈ 435</text>
+
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#60a5fa" x="90" y="672">DrinkMilk  284 pts, 5 active → proj 462, margin +27 → σ 57 → z=0.5 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#22c55e" x="590" y="672">~68%</text>
+
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#a855f7" x="90" y="696">SevereChafing  293 pts, 3 active → proj 450, margin +15 → σ 53 → z=0.3 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#22c55e" x="590" y="696">~61%</text>
+
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#14b8a6" x="90" y="720">moklovin  253 pts, 5 active → proj 420, margin −15 → σ 57 → z=−0.3 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#fbbf24" x="590" y="720">~40%</text>
+
+    <text font-family="'DM Sans',sans-serif" font-size="11" fill="#ef4444" x="90" y="750">Rank 1200  180 pts, 4 active → proj 320, margin −115 → σ 57 → z=−2.0 →</text>
+    <text font-family="'JetBrains Mono',monospace" font-size="12" font-weight="600" fill="#ef4444" x="590" y="750">~2%</text>
+
     </svg>
   </div>
 </div>
 
 <script>
-const VERCEL_URL = 'https://golf-proxy.vercel.app';
-const STORAGE_KEY = 'weLoveStevieDashboard';
+// ========== index_v5.html ==========
+// FIX 1: Storage key restored to preserve existing sessions
+// FIX 2: Cut logic simplified — last-name match only, no normalization
+// FIX 3: DrinkMilk auto-load confirmed after both init() and handleFile()
 
-let CASH = 222, CASH_HISTORY = [], TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
-let CUT_PLAYERS = new Set();
-let CUT_LINE = null;
-let PLAYER_SCORES = {};
-let fieldCashAvg = 0, fieldNonCashAvg = 0, lastUploadTime = null;
-let currentSingleEntry = null;
-let cmpEntries = [];
+const VERCEL_URL='https://golf-proxy.vercel.app';
+const STORAGE_KEY='weLoveStevieDashboard'; // FIX 1: was _v4, broke session persistence
 
-// ── CUT LOGIC ──────────────────────────────────────────────────
-// Last-name match only. Scores come from live feed.
-function applyScoreCuts() {
-  if (CUT_LINE === null) return;
-  ENTRIES.forEach(e => {
-    e.l.forEach(lineupName => {
-      const lineupLast = lineupName.split(' ').pop().toLowerCase();
-      for (const [liveName, score] of Object.entries(PLAYER_SCORES)) {
-        const liveLast = liveName.split(' ').pop().toLowerCase();
-        if (liveLast === lineupLast && score > CUT_LINE) {
-          CUT_PLAYERS.add(lineupName);
-          break;
-        }
-      }
-    });
-  });
+let CASH=222,CASH_HISTORY=[],TOTAL=0,ODDS={},FREQ={},ENTRIES=[];
+let CUT_MANUAL=new Set();  // user-entered cuts (persist until user clears)
+let CUT_LIVE=new Set();    // live-feed-derived cuts (rebuilt from scratch on every fetch)
+let CUT_PLAYERS=new Set(); // computed union of CUT_MANUAL ∪ CUT_LIVE — used by all downstream code
+let CUT_LINE=null;
+let PLAYER_SCORES={};
+let fieldCashAvg=0,fieldNonCashAvg=0,lastUploadTime=null;
+let currentSingleEntry=null;
+
+function rebuildCutPlayers(){
+  CUT_PLAYERS=new Set([...CUT_MANUAL,...CUT_LIVE]);
   updateCutStatus();
 }
 
-function updateCutLine() {
-  const v = document.getElementById('cutLineInput').value.trim();
-  CUT_LINE = v === '' ? null : parseInt(v);
-  if (CUT_LINE !== null) applyScoreCuts();
-  else updateCutStatus();
-  refreshViews(); saveToStorage();
+function saveToStorage(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({
+    entries:ENTRIES,odds:ODDS,freq:FREQ,cashLine:CASH,cashHistory:CASH_HISTORY,total:TOTAL,
+    cutManual:Array.from(CUT_MANUAL),cutLive:Array.from(CUT_LIVE),
+    cutLine:CUT_LINE,playerScores:PLAYER_SCORES,
+    uploadTime:lastUploadTime,
+    tournament:document.getElementById('tournamentInput').value.trim(),
+    cutPlayersInput:document.getElementById('cutPlayersInput').value
+  }));}catch(e){}
 }
 
-function applyNameCuts() {
-  const inp = document.getElementById('cutNamesInput').value;
-  if (!inp.trim()) return;
-  const fragments = inp.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  const allNames = new Set();
-  ENTRIES.forEach(e => e.l.forEach(p => allNames.add(p)));
-  fragments.forEach(frag => {
-    allNames.forEach(p => { if (p.toLowerCase().includes(frag)) CUT_PLAYERS.add(p); });
+function loadFromStorage(){
+  try{const raw=localStorage.getItem(STORAGE_KEY);if(!raw)return null;const d=JSON.parse(raw);if(!d.entries||!d.entries.length)return null;return d;}catch(e){return null;}
+}
+
+function fmt(ts){
+  if(!ts)return'';const d=new Date(ts);
+  return d.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})+' '+d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+}
+
+// ---- CUT MANAGEMENT ----
+function isPlayerCut(p){return CUT_PLAYERS.has(p);}
+
+function updateCutStatus(){
+  const el=document.getElementById('cutStatus');if(el)el.textContent=CUT_PLAYERS.size>0?CUT_PLAYERS.size+' cut':'';
+}
+
+// FIX 2: Use live feed STATUS (CUT/WD/WITHDRAWN), NOT score-vs-threshold.
+// Score comparison is wrong — a player who made the R2 cut at +1 might be +5 in R3.
+// Rebuilds CUT_LIVE from scratch on every call — false cuts auto-correct.
+function applyCutsFromLiveStatus(players){
+  if(!players||!players.length)return;
+  CUT_LIVE.clear(); // ← key difference: rebuild, don't accumulate
+  const lastNameCount={};
+  players.forEach(p=>{const ln=p.name.split(' ').pop().toLowerCase();lastNameCount[ln]=(lastNameCount[ln]||0)+1;});
+  const cutStatuses=new Set(['CUT','WITHDRAWN','WD']);
+  const lineupNames=new Set();
+  ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
+  lineupNames.forEach(lineupName=>{
+    const lnLower=lineupName.toLowerCase();
+    // 1) Full-name match
+    for(const p of players){
+      if(p.name.toLowerCase()===lnLower){
+        if(cutStatuses.has(p.status))CUT_LIVE.add(lineupName);
+        return; // found the player — done either way
+      }
+    }
+    // 2) Last-name fallback ONLY if unique in the live feed
+    const last=lineupName.split(' ').pop().toLowerCase();
+    if((lastNameCount[last]||0)>1)return;
+    for(const p of players){
+      if(p.name.split(' ').pop().toLowerCase()===last){
+        if(cutStatuses.has(p.status))CUT_LIVE.add(lineupName);
+        return;
+      }
+    }
   });
-  updateCutStatus(); refreshViews(); saveToStorage();
-  showStatus('Marked ' + CUT_PLAYERS.size + ' player(s) cut.', true);
+  rebuildCutPlayers();
 }
 
-function clearAllCuts() {
-  CUT_PLAYERS.clear(); CUT_LINE = null;
-  document.getElementById('cutLineInput').value = '';
-  document.getElementById('cutNamesInput').value = '';
-  updateCutStatus(); refreshViews(); saveToStorage();
+// Manual to-par cut line — only runs on user Apply click, adds to CUT_MANUAL
+function applyCutLineToScores(){
+  if(CUT_LINE===null)return;
+  const scoreEntries=Object.entries(PLAYER_SCORES);
+  const lastNameCount={};
+  scoreEntries.forEach(([name])=>{const ln=name.split(' ').pop().toLowerCase();lastNameCount[ln]=(lastNameCount[ln]||0)+1;});
+  const lineupNames=new Set();
+  ENTRIES.forEach(e=>e.l.forEach(p=>lineupNames.add(p)));
+  lineupNames.forEach(lineupName=>{
+    const lnLower=lineupName.toLowerCase();
+    for(const [liveName,score] of scoreEntries){
+      if(liveName.toLowerCase()===lnLower && score>CUT_LINE){CUT_MANUAL.add(lineupName);return;}
+    }
+    const last=lineupName.split(' ').pop().toLowerCase();
+    if((lastNameCount[last]||0)>1)return;
+    for(const [liveName,score] of scoreEntries){
+      if(liveName.split(' ').pop().toLowerCase()===last && score>CUT_LINE){CUT_MANUAL.add(lineupName);return;}
+    }
+  });
+  rebuildCutPlayers();
 }
 
-function updateCutStatus() {
-  const el = document.getElementById('cutStatus');
-  if (el) el.textContent = CUT_PLAYERS.size > 0 ? CUT_PLAYERS.size + ' cut' : '';
-}
-
-function isPlayerCut(p) { return CUT_PLAYERS.has(p); }
-
-// ── STORAGE ──────────────────────────────────────────────────
-function saveToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      entries: ENTRIES, odds: ODDS, freq: FREQ, cashLine: CASH,
-      cashHistory: CASH_HISTORY, total: TOTAL,
-      cutPlayers: Array.from(CUT_PLAYERS), cutLine: CUT_LINE,
-      playerScores: PLAYER_SCORES, uploadTime: lastUploadTime,
-      tournament: document.getElementById('tournamentInput').value.trim(),
-      cutNamesInput: document.getElementById('cutNamesInput').value
-    }));
-  } catch(e) {}
-}
-
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const d = JSON.parse(raw);
-    if (!d.entries || !d.entries.length) return null;
-    return d;
-  } catch(e) { return null; }
-}
-
-function fmt(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
-}
-
-// ── DATA LOAD ──────────────────────────────────────────────────
-function loadData(d, fromStorage = false) {
-  CASH = d.cashLine || CASH;
-  CASH_HISTORY = d.cashHistory || [];
-  TOTAL = d.total; ODDS = d.odds; FREQ = d.freq; ENTRIES = d.entries;
-  CUT_PLAYERS = new Set(d.cutPlayers || []);
-  CUT_LINE = (d.cutLine !== undefined && d.cutLine !== null) ? d.cutLine : null;
-  PLAYER_SCORES = d.playerScores || {};
-  if (d.uploadTime) lastUploadTime = d.uploadTime;
-  if (d.tournament) document.getElementById('tournamentInput').value = d.tournament;
-  if (d.cutNamesInput) document.getElementById('cutNamesInput').value = d.cutNamesInput;
-  document.getElementById('cashLineInput').value = CASH;
-  document.getElementById('cutLineInput').value = CUT_LINE !== null ? CUT_LINE : '';
-  updateCutStatus(); recomputeFieldAvgs(); updateCashHistoryDisplay();
-  const tourney = document.getElementById('tournamentInput').value.trim();
-  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts';
-  if (lastUploadTime) {
-    document.getElementById('dataBadge').textContent = 'UPLOADED: ' + fmt(lastUploadTime);
-    document.getElementById('dataBadge').style.background = 'var(--green-bg)';
-    document.getElementById('dataBadge').style.color = 'var(--green)';
-    document.getElementById('timestamp').textContent = 'Data from ' + fmt(lastUploadTime);
+function updateCutLine(){
+  const inp=document.getElementById('cutLineInput').value.trim();
+  CUT_LINE=inp===''?null:parseInt(inp);
+  if(!isNaN(CUT_LINE)&&CUT_LINE!==null){
+    applyCutLineToScores();
   }
-  cmpEntries = []; renderCompare();
-  if (!fromStorage) saveToStorage();
+  refreshViews();saveToStorage();
 }
 
-// Always called after loadData to show DrinkMilk
-function autoLoadDrinkMilk() {
-  const dm = ENTRIES.find(x => x.n.toLowerCase().includes('drinkmilk'));
-  if (dm) {
-    document.getElementById('searchSingle').value = dm.n;
+function applyCutPlayerNames(){
+  const inp=document.getElementById('cutPlayersInput').value;if(!inp.trim())return;
+  const fragments=inp.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const allNames=new Set();
+  ENTRIES.forEach(e=>e.l.forEach(p=>allNames.add(p)));Object.keys(ODDS).forEach(p=>allNames.add(p));
+  fragments.forEach(frag=>{
+    allNames.forEach(p=>{if(p.toLowerCase().includes(frag))CUT_MANUAL.add(p);});
+  });
+  rebuildCutPlayers();recomputeFieldAvgs();saveToStorage();
+  refreshViews();
+  showStatus('Marked '+CUT_PLAYERS.size+' player(s) cut.',true);
+}
+
+function clearAllCuts(){
+  CUT_MANUAL.clear();CUT_LIVE.clear();CUT_LINE=null;
+  document.getElementById('cutLineInput').value='';
+  document.getElementById('cutPlayersInput').value='';
+  rebuildCutPlayers();recomputeFieldAvgs();saveToStorage();refreshViews();
+}
+
+function refreshViews(){
+  recomputeFieldAvgs();
+  if(currentSingleEntry){
+    const fresh=ENTRIES.find(x=>x.n===currentSingleEntry.n&&x.r===currentSingleEntry.r);
+    if(fresh)renderSingle(fresh);
+  }
+  if(cmpEntries.length>=2)renderCompare();
+}
+
+// ---- LOAD DATA ----
+function loadData(d,fromStorage=false){
+  CASH=d.cashLine||CASH;CASH_HISTORY=d.cashHistory||[];TOTAL=d.total;ODDS=d.odds;FREQ=d.freq;ENTRIES=d.entries;
+  // Restore cut sets — backward compat: old format had single cutPlayers array
+  if(d.cutManual){
+    CUT_MANUAL=new Set(d.cutManual);
+    CUT_LIVE=new Set(d.cutLive||[]);
+  }else{
+    // Old storage format: treat old cuts as live-derived (rebuilt on first fetch, false cuts vanish)
+    CUT_MANUAL=new Set();
+    CUT_LIVE=new Set(d.cutPlayers||[]);
+  }
+  CUT_LINE=d.cutLine!==undefined?d.cutLine:null;PLAYER_SCORES=d.playerScores||{};
+  rebuildCutPlayers();
+  if(d.uploadTime)lastUploadTime=d.uploadTime;
+  if(d.tournament)document.getElementById('tournamentInput').value=d.tournament;
+  if(d.cutPlayersInput)document.getElementById('cutPlayersInput').value=d.cutPlayersInput;
+  document.getElementById('cashLineInput').value=CASH;
+  document.getElementById('cutLineInput').value=CUT_LINE!==null?CUT_LINE:'';
+  updateCutStatus();recomputeFieldAvgs();updateCashHistoryDisplay();
+  const tourney=document.getElementById('tournamentInput').value.trim();
+  document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
+  if(lastUploadTime){
+    document.getElementById('dataBadge').textContent='UPLOADED: '+fmt(lastUploadTime);
+    document.getElementById('dataBadge').style.background='var(--green-bg)';
+    document.getElementById('dataBadge').style.color='var(--green)';
+    document.getElementById('timestamp').textContent='Data from '+fmt(lastUploadTime);
+  }
+  cmpEntries=[];renderCompare();
+  if(!fromStorage)saveToStorage();
+}
+
+// FIX 3: autoLoadDrinkMilk called AFTER loadData returns in both init() and handleFile()
+function autoLoadDrinkMilk(){
+  const dm=ENTRIES.find(x=>x.n.toLowerCase().includes('drinkmilk'));
+  if(dm){
+    document.getElementById('singleDash').classList.remove('hidden');
+    document.getElementById('singleEmpty').classList.add('hidden');
+    document.getElementById('searchSingle').value=dm.n;
     renderSingle(dm);
-  } else {
+  }else{
     document.getElementById('singleDash').classList.add('hidden');
     document.getElementById('singleEmpty').classList.remove('hidden');
-    document.getElementById('searchSingle').value = '';
+    document.getElementById('searchSingle').value='';
   }
 }
 
-function recomputeFieldAvgs() {
+function recomputeFieldAvgs(){
   let cS=0,cN=0,nS=0,nN=0;
-  ENTRIES.forEach(e => {
-    const ol = e.l.filter(p => !isPlayerCut(p) && ODDS[p] !== undefined);
-    if (!ol.length) return;
-    const avg = ol.reduce((s,p) => s + ODDS[p], 0) / ol.length;
-    if (e.p >= CASH) { cS += avg; cN++; } else { nS += avg; nN++; }
-  });
-  fieldCashAvg = cN ? Math.round(cS/cN*10)/10 : 200;
-  fieldNonCashAvg = nN ? Math.round(nS/nN*10)/10 : 300;
+  ENTRIES.forEach(e=>{const ol=e.l.filter(p=>!isPlayerCut(p)&&ODDS[p]!==undefined);if(!ol.length)return;const avg=ol.reduce((s,p)=>s+ODDS[p],0)/ol.length;if(e.p>=CASH){cS+=avg;cN++;}else{nS+=avg;nN++;}});
+  fieldCashAvg=cN?Math.round(cS/cN*10)/10:200;fieldNonCashAvg=nN?Math.round(nS/nN*10)/10:300;
 }
 
-function refreshViews() {
-  recomputeFieldAvgs();
-  renderFieldTable();
-  if (currentSingleEntry) {
-    const fresh = ENTRIES.find(x => x.n === currentSingleEntry.n && x.r === currentSingleEntry.r);
-    if (fresh) renderSingle(fresh);
-  }
-  if (cmpEntries.length >= 2) renderCompare();
+function updateCashLine(){
+  const v=parseFloat(document.getElementById('cashLineInput').value);if(isNaN(v)||v<=0)return;CASH=v;
+  const maxHoles=ENTRIES.length?Math.max(...ENTRIES.map(e=>e.h)):0;
+  CASH_HISTORY.push({value:v,time:Date.now(),maxHoles});recomputeFieldAvgs();updateCashHistoryDisplay();
+  const tourney=document.getElementById('tournamentInput').value.trim();
+  document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
+  refreshViews();saveToStorage();
 }
 
-function updateCashLine() {
-  const v = parseFloat(document.getElementById('cashLineInput').value);
-  if (isNaN(v) || v <= 0) return;
-  CASH = v;
-  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(e => e.h)) : 0;
-  CASH_HISTORY.push({ value: v, time: Date.now(), maxHoles });
-  recomputeFieldAvgs(); updateCashHistoryDisplay();
-  const tourney = document.getElementById('tournamentInput').value.trim();
-  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts';
-  refreshViews(); saveToStorage();
+function getProjectedCashLine(){
+  const currentMax=ENTRIES.length?Math.max(...ENTRIES.map(e=>e.h)):0;const holesRemaining=432-currentMax;
+  if(CASH_HISTORY.length<2)return{projected:CASH,rate:0,holesRemaining,confidence:'low'};
+  const sorted=[...CASH_HISTORY].sort((a,b)=>a.maxHoles-b.maxHoles);const first=sorted[0],last=sorted[sorted.length-1];
+  const holeDiff=last.maxHoles-first.maxHoles;const ptsDiff=last.value-first.value;
+  if(holeDiff<=0)return{projected:CASH,rate:0,holesRemaining,confidence:'low'};
+  const ratePerHole=ptsDiff/holeDiff;const projectedCash=CASH+(ratePerHole*holesRemaining);
+  let confidence='low';if(CASH_HISTORY.length>=3&&holeDiff>=36)confidence='medium';if(CASH_HISTORY.length>=4&&holeDiff>=72)confidence='high';
+  return{projected:Math.round(projectedCash*10)/10,rate:Math.round(ratePerHole*1000)/1000,holesRemaining,confidence};
 }
 
-function getProjectedCashLine() {
-  const currentMax = ENTRIES.length ? Math.max(...ENTRIES.map(e => e.h)) : 0;
-  const holesRemaining = 432 - currentMax;
-  if (CASH_HISTORY.length < 2) return { projected: CASH, rate: 0, holesRemaining, confidence: 'low' };
-  const sorted = [...CASH_HISTORY].sort((a,b) => a.maxHoles - b.maxHoles);
-  const first = sorted[0], last = sorted[sorted.length-1];
-  const holeDiff = last.maxHoles - first.maxHoles;
-  const ptsDiff = last.value - first.value;
-  if (holeDiff <= 0) return { projected: CASH, rate: 0, holesRemaining, confidence: 'low' };
-  const ratePerHole = ptsDiff / holeDiff;
-  let confidence = 'low';
-  if (CASH_HISTORY.length >= 3 && holeDiff >= 36) confidence = 'medium';
-  if (CASH_HISTORY.length >= 4 && holeDiff >= 72) confidence = 'high';
-  return { projected: Math.round((CASH + ratePerHole * holesRemaining)*10)/10, rate: Math.round(ratePerHole*1000)/1000, holesRemaining, confidence };
+function updateCashHistoryDisplay(){
+  const el=document.getElementById('cashHistoryInfo');if(!el)return;
+  if(CASH_HISTORY.length<2){el.innerHTML='<span style="color:#888">Need 2+ to project</span>';return;}
+  const proj=getProjectedCashLine();const arrow=proj.rate>0?'↑':proj.rate<0?'↓':'→';
+  const color=proj.rate>0.3?'var(--red)':proj.rate>0.1?'var(--amber)':'var(--green)';
+  el.innerHTML=`<span style="color:${color}">${arrow} ${Math.abs(proj.rate).toFixed(2)} pts/hole</span> → <strong style="color:${color}">${proj.projected}</strong> <span style="color:#888">(${proj.holesRemaining}h left, ${proj.confidence})</span>`;
 }
 
-function updateCashHistoryDisplay() {
-  const el = document.getElementById('cashHistoryInfo');
-  if (!el) return;
-  if (CASH_HISTORY.length < 2) { el.innerHTML = '<span style="color:#888">Need 2+ to project</span>'; return; }
-  const proj = getProjectedCashLine();
-  const arrow = proj.rate > 0 ? '↑' : proj.rate < 0 ? '↓' : '→';
-  const color = proj.rate > 0.3 ? 'var(--red)' : proj.rate > 0.1 ? 'var(--amber)' : 'var(--green)';
-  el.innerHTML = `<span style="color:${color}">${arrow} ${Math.abs(proj.rate).toFixed(2)} pts/hole</span> → <strong style="color:${color}">${proj.projected}</strong> <span style="color:#888">(${proj.holesRemaining}h, ${proj.confidence})</span>`;
-}
-
-function updateTournament() {
-  const tourney = document.getElementById('tournamentInput').value.trim();
-  if (TOTAL > 0) document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts';
+function updateTournament(){
+  const tourney=document.getElementById('tournamentInput').value.trim();
+  if(TOTAL>0)document.getElementById('headerSub').textContent='DraftKings'+(tourney?' — '+tourney:'')+' — '+TOTAL+' entries — Cash line: '+CASH+' pts';
   saveToStorage();
 }
 
-function clearCashHistory() { CASH_HISTORY = []; updateCashHistoryDisplay(); saveToStorage(); }
+function clearCashHistory(){CASH_HISTORY=[];updateCashHistoryDisplay();saveToStorage();}
 
-// ── CSV PARSE ──────────────────────────────────────────────────
-function parseCSV(text) {
-  const result = Papa.parse(text, { header: true, skipEmptyLines: true });
-  if (result.errors.length > 5) throw new Error('Parse errors: ' + result.errors[0].message);
-  const rows = result.data;
-  if (rows.length < 10) throw new Error('Only ' + rows.length + ' rows — check format');
-  const h = result.meta.fields;
-  const find = pats => h.find(f => pats.some(p => f.trim().toLowerCase().includes(p)));
-  const colRank = find(['rank']), colName = find(['entryname','entry_name','entry name']);
-  const colPts = find(['points','pts']), colTime = find(['timeremaining','time_remaining','time remaining','holes']);
-  const colLineup = find(['lineup']), colPlayer = find(['player']), colOdds = find(['betting odds','bettingodds','odds']);
-  if (!colRank || !colName || !colPts) throw new Error('Missing columns. Need: Rank, EntryName, Points.');
-  const odds = {};
-  if (colPlayer && colOdds) {
-    rows.forEach(r => {
-      const p = (r[colPlayer]||'').trim(), o = (r[colOdds]||'').trim();
-      if (p && o && o !== '#N/A' && o !== 'N/A' && o !== '') {
-        const v = parseFloat(o.replace(/,/g,''));
-        if (!isNaN(v) && v > 0 && !odds[p]) odds[p] = Math.round(v*100)/100;
+// ---- CSV PARSE ----
+function parseCSV(text){
+  // Strip BOM (some editors/OS add UTF-8 BOM that can corrupt first header)
+  text=text.replace(/^\uFEFF/,'');
+
+  // Auto-detect delimiter: count commas, semicolons, tabs in first line
+  const firstLine=text.split(/\r?\n/)[0]||'';
+  let delim=',';
+  const commas=(firstLine.match(/,/g)||[]).length;
+  const semis=(firstLine.match(/;/g)||[]).length;
+  const tabs=(firstLine.match(/\t/g)||[]).length;
+  if(semis>commas&&semis>tabs)delim=';';
+  else if(tabs>commas&&tabs>semis)delim='\t';
+
+  const result=Papa.parse(text,{header:true,skipEmptyLines:true,delimiter:delim});
+  if(result.errors.length>5)throw new Error('Too many parse errors (delim="'+delim+'"): '+result.errors[0].message);
+  const rows=result.data;if(rows.length<10)throw new Error('Only '+rows.length+' rows — check format (delim="'+delim+'")');
+
+  // Flexible column matching: trim, lowercase, strip non-alpha for resilience
+  const h=result.meta.fields;
+  const norm=s=>s.trim().toLowerCase().replace(/[^a-z0-9]/g,'');
+  const find=patterns=>h.find(f=>patterns.some(x=>norm(f).includes(x)));
+
+  const colRank=find(['rank']);
+  const colName=find(['entryname','entryid'])||find(['entry']);
+  const colPts=find(['points','pts']);
+  const colTime=find(['timeremaining','timeremain','holes']);
+  const colLineup=find(['lineup']);
+  const colPlayer=find(['player']);
+  const colOdds=find(['bettingodds','odds']);
+
+  // Build diagnostic for what we found/missed
+  const diag={delim,cols:h.length,matched:{rank:colRank,name:colName,pts:colPts,time:colTime,lineup:colLineup,player:colPlayer,odds:colOdds}};
+
+  if(!colRank||!colName||!colPts){
+    const found=h.slice(0,15).join(', ');
+    const missing=[];
+    if(!colRank)missing.push('Rank');if(!colName)missing.push('EntryName');if(!colPts)missing.push('Points');
+    throw new Error('Missing column(s): '+missing.join(', ')+'. Delimiter="'+delim+'", '+h.length+' columns detected. First headers: '+found);
+  }
+
+  // Parse odds
+  const odds={};
+  if(colPlayer&&colOdds){
+    rows.forEach(r=>{
+      const p=(r[colPlayer]||'').trim();
+      const o=(r[colOdds]||'').trim();
+      if(p&&o&&o!=='#N/A'&&o!=='N/A'&&o!==''){
+        const v=parseFloat(o.replace(/[,\s]/g,''));
+        if(!isNaN(v)&&v>0&&!odds[p])odds[p]=Math.round(v*100)/100;
       }
     });
   }
-  const parseLineup = s => s ? s.split(/\s*G\s+/).map(p=>p.trim()).filter(p=>p.length>0) : [];
-  const entries = [], freq = {};
-  rows.forEach(r => {
-    const rank = parseInt(r[colRank]), name = (r[colName]||'').trim(), pts = parseFloat(r[colPts]);
-    const holes = colTime ? parseInt(r[colTime])||0 : 0;
-    const lineup = colLineup ? parseLineup(r[colLineup]) : [];
-    if (isNaN(rank) || !name) return;
-    lineup.forEach(p => { freq[p] = (freq[p]||0)+1; });
-    entries.push({ r: rank, n: name, p: isNaN(pts) ? 0 : pts, h: holes, l: lineup });
-  });
-  const total = entries.length;
-  const freqPct = {};
-  Object.keys(freq).forEach(p => { freqPct[p] = Math.round(freq[p]/total*1000)/10; });
-  return { entries, odds, freq: freqPct, total, cashLine: CASH };
-}
 
-// ── FILE HANDLING ──────────────────────────────────────────────
-const uploadZone = document.getElementById('uploadZone');
-const fileInput = document.getElementById('fileInput');
-const statusDiv = document.getElementById('uploadStatus');
-
-function showStatus(msg, ok) {
-  statusDiv.className = 'upload-status ' + (ok ? 'success' : 'error');
-  statusDiv.textContent = msg;
-  statusDiv.classList.remove('hidden');
-  if (ok) setTimeout(() => statusDiv.classList.add('hidden'), 5000);
-}
-
-function handleFile(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const data = parseCSV(e.target.result);
-      lastUploadTime = new Date().toISOString();
-      data.uploadTime = lastUploadTime;
-      // Preserve cuts & scores across reload
-      data.cutPlayers = Array.from(CUT_PLAYERS);
-      data.cutLine = CUT_LINE;
-      data.playerScores = PLAYER_SCORES;
-      loadData(data);
-      // Re-apply score-based cuts against preserved scores
-      if (CUT_LINE !== null) applyScoreCuts();
-      renderFieldTable();
-      autoLoadDrinkMilk(); // ← load DrinkMilk after every upload
-      showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' players with odds.', true);
-    } catch(err) { showStatus('Parse error: ' + err.message, false); }
-  };
-  reader.readAsText(file);
-}
-
-fileInput.addEventListener('change', function() { handleFile(this.files[0]); this.value = ''; });
-uploadZone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
-uploadZone.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
-uploadZone.addEventListener('drop', function(e) { e.preventDefault(); this.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); });
-
-// ── ODDS & PROBABILITY ──────────────────────────────────────────
-const COLORS = ['#3b82f6','#a855f7','#14b8a6'];
-const CHIP_CLS = ['chip-1','chip-2','chip-3'];
-
-function getOdds(e) {
-  const a = [], c = [];
-  e.l.forEach(p => {
-    if (isPlayerCut(p)) { c.push({ name:p, freq:FREQ[p]||0 }); }
-    else if (ODDS[p] !== undefined) { a.push({ name:p, odds:ODDS[p], freq:FREQ[p]||0 }); }
-    else { a.push({ name:p, odds:null, freq:FREQ[p]||0 }); }
-  });
-  const w = a.filter(x => x.odds !== null);
-  return { active:a, cut:c, avg: w.length ? w.reduce((s,x)=>s+x.odds,0)/w.length : null, n:w.length };
-}
-
-function cashProb(e) {
-  const totalEntries = ENTRIES.length;
-  if (!totalEntries) return 0;
-  const gap = CASH - e.p;
-  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(x=>x.h)) : 0;
-  const completionPct = maxHoles / (72*6);
-  const activePlayers = e.l.filter(p => !isPlayerCut(p) && ODDS[p] !== undefined).length;
-  const totalPlayers = e.l.filter(p => !isPlayerCut(p)).length || 1;
-  const holesLeftPerPlayer = Math.max(0, maxHoles - e.h) / Math.max(totalPlayers, 1);
-  const remainingSwing = activePlayers * holesLeftPerPlayer * 0.5;
-  if (gap > 0) {
-    const holesLeft = Math.max(0, maxHoles - e.h);
-    const pphNeeded = holesLeft > 0 ? gap / holesLeft : Infinity;
-    const entriesBetween = ENTRIES.filter(x => x.p > e.p && x.p < CASH).length;
-    const entriesAtCash = ENTRIES.filter(x => x.p >= CASH).length;
-    const cashSlots = Math.round(totalEntries * 0.45);
-    const slotsOpen = Math.max(0, cashSlots - entriesAtCash);
-    const rankFactor = slotsOpen > 0 ? Math.min(0.85, slotsOpen/(entriesBetween+slotsOpen+1)) : 0.05;
-    let gapPenalty;
-    if (holesLeft === 0) gapPenalty = 0.02;
-    else if (pphNeeded > 8) gapPenalty = 0.05;
-    else if (pphNeeded > 5) gapPenalty = 0.15;
-    else if (pphNeeded > 3) gapPenalty = 0.30;
-    else if (pphNeeded > 1.5) gapPenalty = 0.50;
-    else if (pphNeeded > 0.5) gapPenalty = 0.70;
-    else gapPenalty = 0.85;
-    gapPenalty *= (1 - Math.pow(completionPct, 1.5) * 0.5);
-    return Math.min(60, Math.max(1, Math.round(rankFactor * gapPenalty * 100)));
+  // Parse lineup: try multiple patterns
+  function parseLineup(s){
+    if(!s||typeof s!=='string')return[];
+    s=s.trim();
+    // Pattern 1: "G PlayerName G PlayerName" (DraftKings standard)
+    if(s.includes(' G ')||s.startsWith('G ')){
+      return s.split(/\s*G\s+/).map(p=>p.trim()).filter(p=>p.length>0);
+    }
+    // Pattern 2: "PlayerName, PlayerName" (comma-separated names)
+    if(s.includes(',')){
+      return s.split(',').map(p=>p.trim()).filter(p=>p.length>1);
+    }
+    // Pattern 3: "PlayerName; PlayerName" (semicolon-separated)
+    if(s.includes(';')){
+      return s.split(';').map(p=>p.trim()).filter(p=>p.length>1);
+    }
+    // Single player or unrecognized format
+    return s.length>2?[s]:[];
   }
-  const cushion = e.p - CASH;
-  const swingRisk = remainingSwing > 0 ? Math.max(0, Math.min(1, cushion/(cushion+remainingSwing))) : 1;
-  const baseCertainty = (0.55 + completionPct*0.40) * (0.6 + swingRisk*0.4);
-  if (cushion > 50) return Math.min(97, Math.round(97*baseCertainty));
-  if (cushion > 20) return Math.min(94, Math.round(90*baseCertainty));
-  if (cushion > 10) return Math.min(88, Math.round(80*baseCertainty));
-  if (cushion > 5)  return Math.min(80, Math.round(70*baseCertainty));
-  if (cushion > 2)  return Math.min(72, Math.round(60*baseCertainty));
-  return Math.min(65, Math.round(50*baseCertainty));
+
+  const entries=[];const freq={};
+  let zeroPoints=0,emptyLineups=0;
+  rows.forEach(r=>{
+    const rank=parseInt(r[colRank]);const name=(r[colName]||'').trim();const pts=parseFloat(r[colPts]);
+    const holes=colTime?parseInt(r[colTime])||0:0;const lineup=colLineup?parseLineup(r[colLineup]):[];
+    if(isNaN(rank)||!name)return;
+    if(isNaN(pts)||pts===0)zeroPoints++;
+    if(!lineup.length)emptyLineups++;
+    lineup.forEach(p=>{freq[p]=(freq[p]||0)+1;});
+    entries.push({r:rank,n:name,p:isNaN(pts)?0:pts,h:holes,l:lineup});
+  });
+
+  const total=entries.length;
+  const freqPct={};Object.keys(freq).forEach(p=>{freqPct[p]=Math.round(freq[p]/total*1000)/10;});
+
+  // Attach diagnostics for handleFile to report
+  const warnings=[];
+  if(!colLineup)warnings.push('No Lineup column found — player breakdowns unavailable.');
+  else if(emptyLineups>total*0.9)warnings.push(emptyLineups+'/'+total+' entries have empty lineups. The Lineup column may be corrupted — was the CSV opened in Excel before uploading? Try re-downloading from DraftKings without opening.');
+  if(!colPlayer||!colOdds)warnings.push('No Player/Odds columns — betting odds unavailable.');
+  else if(Object.keys(odds).length===0)warnings.push('Odds column found but 0 valid odds parsed. Values may be corrupted.');
+  if(zeroPoints>total*0.5)warnings.push(zeroPoints+'/'+total+' entries have 0 points — Points column may be misread.');
+  if(delim!==',')warnings.push('Non-standard delimiter detected: "'+(delim==='\t'?'TAB':delim)+'". CSV may have been modified.');
+
+  return{entries,odds,freq:freqPct,total,cashLine:CASH,warnings,diag};
 }
 
-function oddsClass(v) { return v < 50 ? 'odds-good' : v < 200 ? 'odds-mid' : 'odds-bad'; }
-function probColor(p) { return p > 60 ? 'var(--green)' : p > 30 ? 'var(--amber)' : 'var(--red)'; }
+// ---- FILE HANDLING ----
+const uploadZone=document.getElementById('uploadZone');
+const fileInput=document.getElementById('fileInput');
+const statusDiv=document.getElementById('uploadStatus');
 
-function loadPreset(names) {
-  switchTab('compare'); cmpEntries = [];
-  names.forEach(name => {
-    const m = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
-    if (m && cmpEntries.length < 3 && !cmpEntries.find(x => x.n === m.n)) cmpEntries.push(m);
-  });
+function showStatus(msg,ok){
+  statusDiv.className='upload-status '+(ok?'success':'error');statusDiv.innerHTML=msg;statusDiv.classList.remove('hidden');
+  if(ok)setTimeout(()=>statusDiv.classList.add('hidden'),8000);
+}
+
+function handleFile(file){
+  if(!file)return;const reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      const data=parseCSV(e.target.result);lastUploadTime=new Date().toISOString();data.uploadTime=lastUploadTime;
+      data.cutManual=Array.from(CUT_MANUAL);
+      data.cutLive=Array.from(CUT_LIVE);
+      data.cutLine=CUT_LINE;data.playerScores=PLAYER_SCORES;
+      loadData(data);
+      autoLoadDrinkMilk();
+
+      // Build status message with warnings
+      let msg='Loaded '+data.total+' entries, '+Object.keys(data.odds).length+' players with odds.';
+      const playersInLineups=Object.keys(data.freq).length;
+      msg+=' '+playersInLineups+' unique players in lineups.';
+
+      if(data.warnings&&data.warnings.length){
+        msg+='<br><br><strong style="color:var(--amber-t)">⚠ Warnings:</strong><br>'+data.warnings.map(w=>'• '+w).join('<br>');
+        showStatus(msg,false);
+      }else{
+        showStatus(msg,true);
+      }
+    }catch(err){showStatus('Parse error: '+err.message,false);}
+  };reader.readAsText(file);
+}
+
+fileInput.addEventListener('change',function(){handleFile(this.files[0]);this.value='';});
+uploadZone.addEventListener('dragover',function(e){e.preventDefault();this.classList.add('dragover');});
+uploadZone.addEventListener('dragleave',function(){this.classList.remove('dragover');});
+uploadZone.addEventListener('drop',function(e){e.preventDefault();this.classList.remove('dragover');handleFile(e.dataTransfer.files[0]);});
+
+// ---- CORE CALCS ----
+const COLORS=['#3b82f6','#a855f7','#14b8a6'];const CHIP_CLS=['chip-1','chip-2','chip-3'];
+
+function getOdds(e){
+  const a=[],c=[];
+  e.l.forEach(p=>{if(isPlayerCut(p)){c.push({name:p,freq:FREQ[p]||0});}else if(ODDS[p]!==undefined){a.push({name:p,odds:ODDS[p],freq:FREQ[p]||0});}else{a.push({name:p,odds:null,freq:FREQ[p]||0});}});
+  const w=a.filter(x=>x.odds!==null);return{active:a,cut:c,avg:w.length?w.reduce((s,x)=>s+x.odds,0)/w.length:null,n:w.length};
+}
+
+// ---- NORMAL CDF (Abramowitz & Stegun, 7-digit accuracy) ----
+function normalCDF(z){
+  if(z<-8)return 0;if(z>8)return 1;
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const sign=z<0?-1:1,x=Math.abs(z)/Math.SQRT2,t=1/(1+p*x);
+  const y=1-((((a5*t+a4)*t+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return 0.5*(1+sign*y);
+}
+
+// ---- CASH PROBABILITY v3.1: Score-gap model ----
+// Projects entry's final score using entry-specific blended rate,
+// projects cash line forward using entries NEAR the cash threshold,
+// then P(cash) = Φ(margin / σ).
+//
+// v3 bug: used 50th pctl of projected finals → dragged down by weak entries
+// v3.1 fix: anchors to user's CASH value, grown at cash-line-adjacent rate
+
+function cashProbDetail(e){
+  const n=ENTRIES.length;
+  if(!n)return{prob:0,expectedRank:n,explain:'No data'};
+  function countAct(x){return x.l.filter(p=>!isPlayerCut(p)).length;}
+  const myActive=countAct(e);
+
+  // Estimate rounds remaining
+  const maxH=Math.max(...ENTRIES.map(x=>x.h));
+  if(maxH<=0){
+    const above=ENTRIES.filter(x=>x.p>e.p).length;
+    const isCash=(above+1)<=Math.round(n*0.5);
+    return{prob:isCash?95:3,expectedRank:above+1,explain:'No remaining data.'};
+  }
+  let bestRemPerAct=0;
+  ENTRIES.forEach(x=>{const a=countAct(x);if(a>0){const rpa=x.h/a;if(rpa>bestRemPerAct)bestRemPerAct=rpa;}});
+  const roundsRem=Math.min(4,bestRemPerAct/18);
+  const roundsComp=Math.max(0.5,4-roundsRem);
+
+  if(roundsRem<0.05){
+    const above=ENTRIES.filter(x=>x.p>e.p).length;
+    const isCash=(above+1)<=Math.round(n*0.5);
+    return{prob:isCash?97:3,expectedRank:above+1,explain:'Tournament complete. Rank '+(above+1)+' of '+n+'.'};
+  }
+
+  // Field-average rate and entry-specific blended rate
+  let totalPts=0;ENTRIES.forEach(x=>{totalPts+=x.p;});
+  const fieldRate=totalPts/(n*6*roundsComp);
+  const shrink=roundsComp/(roundsComp+2);
+  function blendedRate(x){return shrink*(x.p/(6*roundsComp))+(1-shrink)*fieldRate;}
+  function remPR(x){return x.h/18;}
+
+  // My projected final
+  const myRate=blendedRate(e);
+  const myRemPR=remPR(e);
+  const myProjFinal=e.p+myRemPR*myRate;
+
+  // Project cash line: anchor to user's CASH, grow at rate of entries NEAR cash threshold
+  // These entries determine where the actual cash line ends up
+  const sorted=[...ENTRIES].sort((a,b)=>b.p-a.p);
+  const cashIdx=Math.min(Math.floor(n*0.5),n-1);
+  const lo=Math.max(0,cashIdx-50),hi=Math.min(n-1,cashIdx+50);
+  const neighbors=sorted.slice(lo,hi+1);
+  const avgNbrRemPR=neighbors.reduce((s,x)=>s+remPR(x),0)/neighbors.length;
+  const avgNbrRate=neighbors.reduce((s,x)=>s+blendedRate(x),0)/neighbors.length;
+  const projCashLine=CASH+avgNbrRemPR*avgNbrRate;
+
+  const margin=myProjFinal-projCashLine;
+
+  // Uncertainty: σ=20 per player-round remaining
+  const SIGMA_PR=20;
+  const marginSigma=SIGMA_PR*Math.sqrt(Math.max(1,myRemPR));
+
+  const z=margin/marginSigma;
+  const prob=Math.min(97,Math.max(1,Math.round(normalCDF(z)*100)));
+
+  // Projected rank (from projected finals)
+  const allProj=ENTRIES.map(x=>x.p+remPR(x)*blendedRate(x));
+  const projRank=1+allProj.filter(x=>x>myProjFinal).length;
+
+  const fieldAvgAct=ENTRIES.reduce((s,x)=>s+countAct(x),0)/n;
+  const edgeLabel=myActive>fieldAvgAct?myActive+' active (field avg '+fieldAvgAct.toFixed(1)+')':
+                  myActive<fieldAvgAct?myActive+' active (field avg '+fieldAvgAct.toFixed(1)+') — fewer active':
+                  myActive+' active (field avg)';
+  const explain='Proj rank '+projRank+'/'+n+'. '+edgeLabel+'. Margin '+(margin>0?'+':'')+Math.round(margin)+' vs proj cash line '+Math.round(projCashLine)+'. ~'+roundsRem.toFixed(1)+' rounds left.';
+
+  return{prob,expectedRank:projRank,explain};
+}
+
+function cashProb(e){return cashProbDetail(e).prob;}
+
+function oddsClass(v){return v<50?'odds-good':v<200?'odds-mid':'odds-bad';}
+function probColor(p){return p>60?'var(--green)':p>30?'var(--amber)':'var(--red)';}
+
+function loadPreset(names){
+  switchTab('compare');cmpEntries=[];
+  names.forEach(name=>{const m=ENTRIES.find(x=>x.n.toLowerCase().includes(name.toLowerCase()));if(m&&cmpEntries.length<3&&!cmpEntries.find(x=>x.n===m.n))cmpEntries.push(m);});
   renderCompare();
 }
 
-// ── FIELD DISTRIBUTION TABLE ─────────────────────────────────
-function renderFieldTable() {
-  if (!ENTRIES.length) return;
-  const cashSlots = Math.round(TOTAL * 0.45);
-  const buckets = [];
-  for (let i = 0; i < ENTRIES.length; i += 25) {
-    buckets.push([i+1, Math.min(i+25, ENTRIES.length)]);
-  }
-  const cols = [6,5,4,3,2,1,0];
-  document.getElementById('fieldDistHead').innerHTML =
-    '<tr>' +
-    '<th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3);font-size:11px">Rank</th>' +
-    cols.map(n => '<th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3);font-size:11px">' + n + ' active</th>').join('') +
-    '<th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);color:var(--t3);font-size:11px">Total</th>' +
-    '</tr>';
-  document.getElementById('fieldDistBody').innerHTML = buckets.map(([lo, hi]) => {
-    const group = ENTRIES.filter(e => e.r >= lo && e.r <= hi);
-    const counts = cols.map(n => group.filter(e => e.l.filter(p => !isPlayerCut(p)).length === n).length);
-    const inCash = hi <= cashSlots;
-    const atBubble = lo <= cashSlots && hi > cashSlots;
-    let rowBg = '';
-    if (inCash) rowBg = 'background:rgba(34,197,94,.05)';
-    else if (atBubble) rowBg = 'background:rgba(245,158,11,.05)';
-    return '<tr style="border-bottom:1px solid var(--border);' + rowBg + '">' +
-      '<td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:' + (inCash?'var(--green)':atBubble?'var(--amber-t)':'var(--t2)') + '">' + lo + '–' + hi + '</td>' +
-      counts.map((c, i) => {
-        const color = c === 0 ? 'var(--t3)' : i === 0 ? 'var(--green)' : i === 1 ? 'var(--amber-t)' : 'var(--t2)';
-        return '<td style="text-align:center;padding:6px 8px;font-family:var(--mono);font-size:12px;color:' + color + '">' + (c || '—') + '</td>';
-      }).join('') +
-      '<td style="text-align:center;padding:6px 8px;font-family:var(--mono);font-size:12px;color:var(--t3)">' + group.length + '</td>' +
-      '</tr>';
-  }).join('');
-}
+// ---- SINGLE MODE ----
+let sCompChart=null,sScatterChart=null;
 
-// ── SINGLE MODE ───────────────────────────────────────────────
-let sCompChart = null, sScatterChart = null;
-
-function renderSingle(entry) {
-  currentSingleEntry = entry;
-  document.getElementById('singleDash').classList.remove('hidden');
-  document.getElementById('singleEmpty').classList.add('hidden');
-  const o = getOdds(entry), gap = CASH - entry.p, ok = gap <= 0, prob = cashProb(entry);
-  document.getElementById('sRank').textContent = entry.r;
-  document.getElementById('sRankSub').textContent = 'of ' + TOTAL;
-  document.getElementById('sPts').textContent = entry.p;
-  document.getElementById('sPts').style.color = ok ? 'var(--green)' : 'var(--red)';
-  document.getElementById('sPtsGap').textContent = ok ? 'Cashing! +' + (-gap).toFixed(1) : gap.toFixed(1) + ' below cash';
-  document.getElementById('sHoles').textContent = entry.h;
-  document.getElementById('sHolesSub').textContent = Math.round(entry.h/36) + ' of 6 playing';
-  document.getElementById('sOdds').textContent = o.avg ? o.avg.toFixed(1) : 'N/A';
-  document.getElementById('sOdds').style.color = o.avg ? (o.avg<fieldCashAvg?'var(--green)':o.avg<fieldNonCashAvg?'var(--amber)':'var(--red)') : 'var(--t3)';
-  let worse = 0, tot = 0;
-  ENTRIES.forEach(x => { const xo = getOdds(x); if (xo.avg!==null){tot++;if(xo.avg>(o.avg||0))worse++;} });
-  document.getElementById('sOddsPctl').textContent = o.avg ? 'Better than ' + Math.round(worse/tot*100) + '% of field' : '';
-  const gb = document.getElementById('sGaugeBar');
-  gb.style.width = prob + '%'; gb.style.background = probColor(prob);
-  document.getElementById('sGaugeLabel').textContent = prob + '%';
-  document.getElementById('sGaugeLabel').style.color = probColor(prob);
-  document.getElementById('sGaugeExplain').textContent = ok ? 'Currently in the money.' : gap<10 ? 'Within striking distance.' : gap<20 ? 'Significant ground to cover.' : 'Very steep climb needed.';
-  const tbody = document.getElementById('sPlayerBody'); tbody.innerHTML = '';
-  const withOdds = o.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);
-  const noOdds = o.active.filter(x=>x.odds===null);
-  [...withOdds,...noOdds,...o.cut.map(c=>({...c,odds:null,isCut:true}))].forEach(p => {
-    const isCut = p.isCut===true, hasOdds = p.odds!==null;
-    const tr = document.createElement('tr');
-    let oddsCell, winCell;
-    if (isCut) { oddsCell = '<span class="odds-pill odds-cut">CUT</span>'; winCell = '—'; }
-    else if (hasOdds) { oddsCell = '<span class="odds-pill '+oddsClass(p.odds)+'">'+p.odds.toFixed(1)+'</span>'; winCell = (1/p.odds*100).toFixed(2)+'%'; }
-    else { oddsCell = '<span style="color:#ffffff">-</span>'; winCell = '-'; }
-    tr.innerHTML = '<td'+(isCut?' class="cut"':'')+'>'+p.name+'</td><td>'+oddsCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+winCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+(p.freq?p.freq.toFixed(1)+'%':'—')+'</td>';
+function renderSingle(entry){
+  currentSingleEntry=entry;
+  document.getElementById('singleDash').classList.remove('hidden');document.getElementById('singleEmpty').classList.add('hidden');
+  const o=getOdds(entry),gap=CASH-entry.p,ok=gap<=0,detail=cashProbDetail(entry),prob=detail.prob;
+  document.getElementById('sRank').textContent=entry.r;document.getElementById('sRankSub').textContent='of '+TOTAL;
+  document.getElementById('sPts').textContent=entry.p;document.getElementById('sPts').style.color=ok?'var(--green)':'var(--red)';
+  document.getElementById('sPtsGap').textContent=ok?'Cashing! +'+(-gap).toFixed(1):gap.toFixed(1)+' below cash';
+  document.getElementById('sHoles').textContent=entry.h;document.getElementById('sHolesSub').textContent=Math.round(entry.h/36)+' of 6 playing';
+  document.getElementById('sOdds').textContent=o.avg?o.avg.toFixed(1):'N/A';
+  document.getElementById('sOdds').style.color=o.avg?(o.avg<fieldCashAvg?'var(--green)':o.avg<fieldNonCashAvg?'var(--amber)':'var(--red)'):'var(--t3)';
+  let worse=0,tot=0;ENTRIES.forEach(x=>{const xo=getOdds(x);if(xo.avg!==null){tot++;if(xo.avg>(o.avg||0))worse++;}});
+  document.getElementById('sOddsPctl').textContent=o.avg?'Better than '+Math.round(worse/tot*100)+'% of field':'';
+  const gb=document.getElementById('sGaugeBar');gb.style.width=prob+'%';gb.style.background=probColor(prob);
+  document.getElementById('sGaugeLabel').textContent=prob+'%';document.getElementById('sGaugeLabel').style.color=probColor(prob);
+  document.getElementById('sGaugeExplain').textContent=detail.explain;
+  const tbody=document.getElementById('sPlayerBody');tbody.innerHTML='';
+  const withOdds=o.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);const noOdds=o.active.filter(x=>x.odds===null);
+  [...withOdds,...noOdds,...o.cut.map(c=>({...c,odds:null,isCut:true}))].forEach(p=>{
+    const isCut=p.isCut===true,hasOdds=p.odds!==null;const tr=document.createElement('tr');
+    let oddsCell,winCell;
+    if(isCut){oddsCell='<span class="odds-pill odds-cut">CUT</span>';winCell='—';}
+    else if(hasOdds){oddsCell='<span class="odds-pill '+oddsClass(p.odds)+'">'+p.odds.toFixed(1)+'</span>';winCell=(1/p.odds*100).toFixed(2)+'%';}
+    else{oddsCell='<span style="color:#ffffff">-</span>';winCell='-';}
+    tr.innerHTML='<td'+(isCut?' class="cut"':'')+'>'+p.name+'</td><td>'+oddsCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+winCell+'</td><td style="font-family:var(--mono);font-size:12px;color:#ffffff">'+(p.freq?p.freq.toFixed(1)+'%':'—')+'</td>';
     tbody.appendChild(tr);
   });
-  const totTr = document.createElement('tr'); totTr.className = 'total-row';
-  totTr.innerHTML = '<td>Average (active)</td><td><span class="odds-pill '+(o.avg?oddsClass(o.avg):'odds-cut')+'">'+(o.avg?o.avg.toFixed(1):'N/A')+'</span></td><td style="font-family:var(--mono);font-size:12px">'+(o.avg?(1/o.avg*100).toFixed(3)+'%':'—')+'</td><td></td>';
+  const totTr=document.createElement('tr');totTr.className='total-row';
+  totTr.innerHTML='<td>Average (active)</td><td><span class="odds-pill '+(o.avg?oddsClass(o.avg):'odds-cut')+'">'+(o.avg?o.avg.toFixed(1):'N/A')+'</span></td><td style="font-family:var(--mono);font-size:12px">'+(o.avg?(1/o.avg*100).toFixed(3)+'%':'—')+'</td><td></td>';
   tbody.appendChild(totTr);
-  const ctx1 = document.getElementById('sCompChart');
-  if (sCompChart) sCompChart.destroy();
-  sCompChart = new Chart(ctx1, {type:'bar',data:{labels:['Cashing avg','Non-cash avg','This entry'],datasets:[{data:[fieldCashAvg,fieldNonCashAvg,o.avg||0],backgroundColor:['#22c55e','#f59e0b','#3b82f6'],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Avg odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{y:{beginAtZero:true,max:Math.max(400,(o.avg||0)+50),ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},x:{ticks:{color:'#9ca3b4',font:{size:11}},grid:{display:false}}}}});
-  const pd = document.getElementById('sPassBreakdown');
-  if (ok) { pd.innerHTML = '<div style="color:var(--green);font-size:13px;padding:8px 0">Above cash line!</div>'; }
-  else {
-    const btw = ENTRIES.filter(x => x.p > entry.p && x.p < CASH);
-    let fw=0,sm=0,mr=0;
-    btw.forEach(x => { if(x.h<entry.h)fw++; else if(x.h===entry.h)sm++; else mr++; });
-    const t = btw.length || 1;
-    pd.innerHTML = ['fewer','same','more'].map((l,i) => {
-      const v=[fw,sm,mr][i], c=['var(--red)','var(--amber)','var(--blue)'][i];
+  const ctx1=document.getElementById('sCompChart');if(sCompChart)sCompChart.destroy();
+  sCompChart=new Chart(ctx1,{type:'bar',data:{labels:['Cashing avg','Non-cash avg','This entry'],datasets:[{data:[fieldCashAvg,fieldNonCashAvg,o.avg||0],backgroundColor:['#22c55e','#f59e0b','#3b82f6'],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Avg odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{y:{beginAtZero:true,max:Math.max(400,(o.avg||0)+50),ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},x:{ticks:{color:'#9ca3b4',font:{size:11}},grid:{display:false}}}}});
+  const pd=document.getElementById('sPassBreakdown');
+  if(ok){pd.innerHTML='<div style="color:var(--green);font-size:13px;padding:8px 0">Above cash line!</div>';}
+  else{
+    const btw=ENTRIES.filter(x=>x.p>entry.p&&x.p<CASH);let fw=0,sm=0,mr=0;
+    btw.forEach(x=>{if(x.h<entry.h)fw++;else if(x.h===entry.h)sm++;else mr++;});const t=btw.length||1;
+    pd.innerHTML=['fewer','same','more'].map((l,i)=>{const v=[fw,sm,mr][i],c=['var(--red)','var(--amber)','var(--blue)'][i];
       return '<div class="bar-row"><div class="bar-label">'+['Fewer holes','Same holes','More holes'][i]+'</div><div class="bar-track"><div class="bar-fill" style="width:'+Math.round(v/t*100)+'%;background:'+c+'">'+v+'</div></div><div class="bar-val">'+Math.round(v/t*100)+'%</div></div>';
-    }).join('') + '<div style="font-size:11px;color:var(--t3);margin-top:6px">'+btw.length+' entries to pass</div>';
+    }).join('')+'<div style="font-size:11px;color:var(--t3);margin-top:6px">'+btw.length+' entries to pass</div>';
   }
-  const ctx2 = document.getElementById('sScatter');
-  if (sScatterChart) sScatterChart.destroy();
+  const ctx2=document.getElementById('sScatter');if(sScatterChart)sScatterChart.destroy();
   const cs=[],bw=[],bl=[],sel=[];
-  ENTRIES.forEach(x => {
-    if(x.p===0&&x.h===0)return;
-    const pt={x:x.h,y:x.p};
-    if(x.n===entry.n&&x.r===entry.r)sel.push(pt);
-    else if(x.p>=CASH)cs.push(pt);
-    else if(x.p>entry.p)bw.push(pt);
-    else bl.push(pt);
-  });
-  const yMax = Math.max(380,...ENTRIES.map(e=>e.p))+10;
-  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets:[{data:cs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},{data:bw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},{data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{data:bl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
-  const ac = document.getElementById('sAnalysis');
-  const pph = entry.h > 0 ? (gap/entry.h).toFixed(2) : '∞';
-  if (ok) ac.innerHTML = '<div class="callout callout-green"><b>In the money.</b> '+(-gap).toFixed(1)+' pt cushion.</div>';
-  else if (gap < 10) ac.innerHTML = '<div class="callout callout-amber"><b>Bubble.</b> '+gap.toFixed(1)+' pts back.</div>';
-  else ac.innerHTML = '<div class="callout callout-red"><b>'+(gap>25?'Long shot':'Uphill')+'.</b> '+gap.toFixed(1)+' pts = '+pph+' pts/hole needed.</div>';
-  const above = ENTRIES.filter(x => x.r < entry.r && x.l.length > 0);
-  const ov = document.getElementById('sOverlap');
-  const od = entry.l.map(p => {
-    const cnt = above.filter(x => x.l.includes(p)).length;
-    return { name:p, cnt, pct:above.length?Math.round(cnt/above.length*100):0, odds:ODDS[p], isCut:isPlayerCut(p) };
-  }).sort((a,b) => b.pct-a.pct);
-  ov.innerHTML = od.map(d => {
-    const c = d.isCut?'var(--t3)':d.pct>40?'var(--red)':d.pct>20?'var(--amber)':'var(--green)';
+  ENTRIES.forEach(x=>{if(x.p===0&&x.h===0)return;const pt={x:x.h,y:x.p};if(x.n===entry.n&&x.r===entry.r)sel.push(pt);else if(x.p>=CASH)cs.push(pt);else if(x.p>entry.p)bw.push(pt);else bl.push(pt);});
+  const yMax=Math.max(380,...ENTRIES.map(e=>e.p))+10;
+  sScatterChart=new Chart(ctx2,{type:'scatter',data:{datasets:[{data:cs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},{data:bw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},{data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{data:bl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
+  const ac=document.getElementById('sAnalysis');const pph=entry.h>0?(gap/entry.h).toFixed(2):'∞';
+  if(ok)ac.innerHTML='<div class="callout callout-green"><b>In the money.</b> '+(-gap).toFixed(1)+' pt cushion.</div>';
+  else if(gap<10)ac.innerHTML='<div class="callout callout-amber"><b>Bubble.</b> '+gap.toFixed(1)+' pts back.</div>';
+  else ac.innerHTML='<div class="callout callout-red"><b>'+(gap>25?'Long shot':'Uphill')+'.</b> '+gap.toFixed(1)+' pts = '+pph+' pts/hole needed. Avg odds '+((o.avg||0).toFixed(1))+' vs cashing field '+fieldCashAvg+'.</div>';
+  const above=ENTRIES.filter(x=>x.r<entry.r&&x.l.length>0);const ov=document.getElementById('sOverlap');
+  const od=entry.l.map(p=>{const cnt=above.filter(x=>x.l.includes(p)).length;const isCut=isPlayerCut(p);return{name:p,cnt,pct:above.length?Math.round(cnt/above.length*100):0,odds:ODDS[p],isCut};}).sort((a,b)=>b.pct-a.pct);
+  ov.innerHTML=od.map(d=>{const c=d.isCut?'var(--t3)':d.pct>40?'var(--red)':d.pct>20?'var(--amber)':'var(--green)';
     return '<div class="bar-row"><div class="bar-label">'+(d.isCut?'<s>'+d.name+'</s>':d.name)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+d.pct+'%;background:'+c+'">'+d.pct+'%</div></div><div class="bar-val">'+(d.isCut?'CUT':(d.odds!==undefined?d.odds.toFixed(0):'-'))+'</div></div>';
-  }).join('') + '<div style="font-size:11px;color:#ffffff;margin-top:4px">High overlap = correlated, not an edge</div>';
+  }).join('')+'<div style="font-size:11px;color:#ffffff;margin-top:4px">High overlap = correlated, not an edge</div>';
 }
 
-// ── COMPARE MODE ──────────────────────────────────────────────
-let cmpScatterChart = null, cmpOddsChart = null;
+// ---- COMPARE MODE ----
+let cmpEntries=[],cmpScatterChart=null,cmpOddsChart=null;
 
-function addCompare(name) {
-  if (cmpEntries.length >= 3 || cmpEntries.find(x=>x.n===name)) return;
-  const e = ENTRIES.find(x=>x.n===name); if (!e) return;
-  cmpEntries.push(e); document.getElementById('searchCompare').value = ''; renderCompare();
+function addCompare(name){
+  if(cmpEntries.length>=3||cmpEntries.find(x=>x.n===name))return;const e=ENTRIES.find(x=>x.n===name);if(!e)return;
+  cmpEntries.push(e);document.getElementById('searchCompare').value='';renderCompare();
 }
-function removeCompare(idx) { cmpEntries.splice(idx,1); renderCompare(); }
+function removeCompare(idx){cmpEntries.splice(idx,1);renderCompare();}
 
-function renderCompare() {
-  const chips = document.getElementById('cmpChips');
-  if (!cmpEntries.length) {
-    chips.innerHTML = '<div style="font-size:12px;color:#ffffff;padding:8px 0">Select up to 3 entries to compare.</div>';
-    document.getElementById('cmpDash').classList.add('hidden'); return;
-  }
-  chips.innerHTML = cmpEntries.map((e,i) => '<div class="chip '+CHIP_CLS[i]+'">'+e.n+' <span class="x" onclick="removeCompare('+i+')">&times;</span></div>').join('');
-  if (cmpEntries.length < 2) { document.getElementById('cmpDash').classList.add('hidden'); return; }
+function renderCompare(){
+  const chips=document.getElementById('cmpChips');
+  if(!cmpEntries.length){chips.innerHTML='<div style="font-size:12px;color:#ffffff;padding:8px 0">Select up to 3 entries to compare.</div>';document.getElementById('cmpDash').classList.add('hidden');return;}
+  chips.innerHTML=cmpEntries.map((e,i)=>'<div class="chip '+CHIP_CLS[i]+'">'+e.n+' <span class="x" onclick="removeCompare('+i+')">&times;</span></div>').join('');
+  if(cmpEntries.length<2){document.getElementById('cmpDash').classList.add('hidden');return;}
   document.getElementById('cmpDash').classList.remove('hidden');
-  const data = cmpEntries.map(e => ({entry:e, odds:getOdds(e), prob:cashProb(e), gap:CASH-e.p}));
-  const ranked = [...data].sort((a,b) => b.prob-a.prob||(b.entry.p-a.entry.p));
-  const rb = document.getElementById('rankBody'); rb.innerHTML = '';
-  ranked.forEach((d,i) => {
-    const bgcol = i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
-    const col = i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
-    const tr = document.createElement('tr');
-    tr.innerHTML = '<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')">?</button></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
+  const data=cmpEntries.map(e=>({entry:e,odds:getOdds(e),prob:cashProb(e),gap:CASH-e.p}));
+  const ranked=[...data].sort((a,b)=>b.prob-a.prob||(b.entry.p-a.entry.p));
+  const rb=document.getElementById('rankBody');rb.innerHTML='';
+  ranked.forEach((d,i)=>{
+    const bgcol=i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';const col=i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="?">?</button></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
     rb.appendChild(tr);
   });
-  const cols = document.getElementById('cmpColumns');
-  const nc = cmpEntries.length;
-  cols.style.gridTemplateColumns = 'repeat('+nc+',1fr)';
-  cols.innerHTML = data.map((d,i) => {
-    const ri = ranked.indexOf(d);
-    const wO = d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);
-    const nO = d.odds.active.filter(x=>x.odds===null);
-    const players = [...wO,...nO,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
+  const cols=document.getElementById('cmpColumns');const nc=cmpEntries.length;cols.style.gridTemplateColumns='repeat('+nc+',1fr)';
+  cols.innerHTML=data.map((d,i)=>{
+    const ri=ranked.indexOf(d);
+    const wO=d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);const nO=d.odds.active.filter(x=>x.odds===null);
+    const players=[...wO,...nO,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
     return '<div class="cmp-col"><div class="cmp-rank-badge cmp-rank-'+(ri+1)+'">#'+(ri+1)+'</div>'+
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
       '<div class="cmp-stat"><span class="k">Points</span><span class="v">'+d.entry.p+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Rank</span><span class="v">#'+d.entry.r+'</span></div>'+
-      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')">?</button></span></div>'+
+      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')" title="?">?</button></span></div>'+
       '<div class="cmp-stat"><span class="k">Gap</span><span class="v">'+(d.gap<=0?'<span style="color:var(--green)">IN</span>':d.gap.toFixed(1))+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Holes</span><span class="v">'+d.entry.h+' ('+Math.round(d.entry.h/36)+')</span></div>'+
       '<div class="cmp-stat"><span class="k">Avg odds</span><span class="v">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</span></div>'+
       '<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">'+
-      players.map(p => {
-        const iC=p.isCut===true, hO=p.odds!==null;
-        let od;
-        if(iC) od='<span class="odds-pill odds-cut" style="font-size:10px">CUT</span>';
-        else if(hO) od='<span class="odds-pill '+oddsClass(p.odds)+'" style="font-size:10px">'+p.odds.toFixed(0)+'</span>';
+      players.map(p=>{const iC=p.isCut===true,hO=p.odds!==null;let od;
+        if(iC)od='<span class="odds-pill odds-cut" style="font-size:10px">CUT</span>';
+        else if(hO)od='<span class="odds-pill '+oddsClass(p.odds)+'" style="font-size:10px">'+p.odds.toFixed(0)+'</span>';
         else od='<span style="font-size:10px;color:#ffffff">-</span>';
         return '<div class="cmp-player"><span class="pname"'+(iC?' style="text-decoration:line-through;opacity:.5"':'')+'>'+p.name+'</span>'+od+'</div>';
       }).join('')+'</div></div>';
   }).join('');
-  const ctx = document.getElementById('cmpScatter');
-  if (cmpScatterChart) cmpScatterChart.destroy();
-  const field = ENTRIES.filter(x=>x.p>0||x.h>0).map(x=>({x:x.h,y:x.p}));
-  const ds = [{data:field,backgroundColor:'rgba(255,255,255,.04)',borderColor:'rgba(255,255,255,.08)',pointRadius:1.5,order:10}];
-  cmpEntries.forEach((e,i) => { ds.push({label:e.n,data:[{x:e.h,y:e.p}],backgroundColor:COLORS[i],borderColor:COLORS[i],pointRadius:10,pointStyle:'triangle',order:1}); });
-  const yMax = Math.max(380,...ENTRIES.map(e=>e.p))+10;
-  cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
-  const ctx2 = document.getElementById('cmpOddsChart');
-  if (cmpOddsChart) cmpOddsChart.destroy();
-  const labels = ['Cashing avg','Non-cash avg',...cmpEntries.map(e=>e.n)];
-  const vals = [fieldCashAvg,fieldNonCashAvg,...data.map(d=>d.odds.avg||0)];
-  cmpOddsChart = new Chart(ctx2, {type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:['#22c55e','#f59e0b',...COLORS.slice(0,nc)],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Avg lineup odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,max:Math.max(450,...vals)+50,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
-  const allP = new Set();
-  cmpEntries.forEach(e => e.l.forEach(p => allP.add(p)));
-  const shared = [], unique = new Map();
-  allP.forEach(p => {
-    const inW = cmpEntries.map((e,i) => e.l.includes(p)?i:-1).filter(x=>x>=0);
-    const isCut = isPlayerCut(p);
-    if (inW.length>1) shared.push({name:p,in:inW,odds:ODDS[p],isCut});
-    else { const i=inW[0]; if(!unique.has(i))unique.set(i,[]); unique.get(i).push({name:p,odds:ODDS[p],isCut}); }
-  });
-  const sd = document.getElementById('cmpShared'); let h2='';
-  if (shared.length) {
-    h2 += '<div style="margin-bottom:12px"><div style="font-size:12px;color:#ffffff;margin-bottom:6px">SHARED</div>';
-    shared.forEach(s => {
-      const dots = s.in.map(i=>'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+COLORS[i]+'"></span>').join(' ');
-      const od = s.isCut?'<span class="odds-pill odds-cut">CUT</span>':(s.odds!==undefined?'<span class="odds-pill '+oddsClass(s.odds)+'">'+s.odds.toFixed(0)+'</span>':'<span style="color:#ffffff">-</span>');
-      h2 += '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><span style="width:160px">'+(s.isCut?'<s style="color:#888">'+s.name+'</s>':s.name)+'</span><span>'+od+'</span><span style="display:flex;gap:3px">'+dots+'</span></div>';
-    });
-    h2 += '</div>';
-  }
-  cmpEntries.forEach((e,i) => {
-    const u = unique.get(i)||[];
-    if (u.length) {
-      h2 += '<div style="margin-bottom:10px"><div style="font-size:12px;color:'+COLORS[i]+';margin-bottom:4px">UNIQUE TO '+e.n.toUpperCase()+'</div>';
-      u.forEach(p => {
-        const od = p.isCut?'<span class="odds-pill odds-cut">CUT</span>':(p.odds!==undefined?'<span class="odds-pill '+oddsClass(p.odds)+'">'+p.odds.toFixed(0)+'</span>':'<span style="color:#ffffff">-</span>');
-        h2 += '<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px"><span style="width:160px">'+(p.isCut?'<s style="color:#888">'+p.name+'</s>':p.name)+'</span>'+od+'</div>';
-      });
-      h2 += '</div>';
-    }
-  });
-  sd.innerHTML = h2;
+  const ctx=document.getElementById('cmpScatter');if(cmpScatterChart)cmpScatterChart.destroy();
+  const field=ENTRIES.filter(x=>x.p>0||x.h>0).map(x=>({x:x.h,y:x.p}));
+  const ds=[{data:field,backgroundColor:'rgba(255,255,255,.04)',borderColor:'rgba(255,255,255,.08)',pointRadius:1.5,order:10}];
+  cmpEntries.forEach((e,i)=>{ds.push({label:e.n,data:[{x:e.h,y:e.p}],backgroundColor:COLORS[i],borderColor:COLORS[i],pointRadius:10,pointStyle:'triangle',order:1});});
+  const yMax=Math.max(380,...ENTRIES.map(e=>e.p))+10;
+  cmpScatterChart=new Chart(ctx,{type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
+  const ctx2=document.getElementById('cmpOddsChart');if(cmpOddsChart)cmpOddsChart.destroy();
+  const labels=['Cashing avg','Non-cash avg',...cmpEntries.map(e=>e.n)];const vals=[fieldCashAvg,fieldNonCashAvg,...data.map(d=>d.odds.avg||0)];
+  cmpOddsChart=new Chart(ctx2,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:['#22c55e','#f59e0b',...COLORS.slice(0,nc)],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Avg lineup odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,max:Math.max(450,...vals)+50,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
+  const allP=new Set();cmpEntries.forEach(e=>e.l.forEach(p=>allP.add(p)));const shared=[],unique=new Map();
+  allP.forEach(p=>{const inW=cmpEntries.map((e,i)=>e.l.includes(p)?i:-1).filter(x=>x>=0);const isCut=isPlayerCut(p);
+    if(inW.length>1)shared.push({name:p,in:inW,odds:ODDS[p],isCut});else{const i=inW[0];if(!unique.has(i))unique.set(i,[]);unique.get(i).push({name:p,odds:ODDS[p],isCut});}});
+  const sd=document.getElementById('cmpShared');let h2='';
+  if(shared.length){h2+='<div style="margin-bottom:12px"><div style="font-size:12px;color:#ffffff;margin-bottom:6px">SHARED</div>';
+    shared.forEach(s=>{const dots=s.in.map(i=>'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+COLORS[i]+'"></span>').join(' ');
+      const od=s.isCut?'<span class="odds-pill odds-cut">CUT</span>':(s.odds!==undefined?'<span class="odds-pill '+oddsClass(s.odds)+'">'+s.odds.toFixed(0)+'</span>':'<span style="color:#ffffff">-</span>');
+      h2+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px"><span style="width:160px">'+(s.isCut?'<s style="color:#888">'+s.name+'</s>':s.name)+'</span><span>'+od+'</span><span style="display:flex;gap:3px">'+dots+'</span></div>';});h2+='</div>';}
+  cmpEntries.forEach((e,i)=>{const u=unique.get(i)||[];if(u.length){
+    h2+='<div style="margin-bottom:10px"><div style="font-size:12px;color:'+COLORS[i]+';margin-bottom:4px">UNIQUE TO '+e.n.toUpperCase()+'</div>';
+    u.forEach(p=>{const od=p.isCut?'<span class="odds-pill odds-cut">CUT</span>':(p.odds!==undefined?'<span class="odds-pill '+oddsClass(p.odds)+'">'+p.odds.toFixed(0)+'</span>':'<span style="color:#ffffff">-</span>');
+      h2+='<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px"><span style="width:160px">'+(p.isCut?'<s style="color:#888">'+p.name+'</s>':p.name)+'</span>'+od+'</div>';});h2+='</div>';}});
+  sd.innerHTML=h2;
 }
 
-// ── SEARCH ────────────────────────────────────────────────────
-function wireSearch(inputId, dropId, onSelect) {
-  const inp = document.getElementById(inputId), drop = document.getElementById(dropId);
-  inp.addEventListener('input', function() {
-    const q = this.value.toLowerCase().trim();
-    if (q.length < 1) { drop.classList.remove('show'); return; }
-    const m = ENTRIES.filter(e => e.n.toLowerCase().includes(q)).slice(0,40);
-    if (!m.length) { drop.classList.remove('show'); return; }
-    drop.innerHTML = m.map(e => '<div class="dropdown-item'+(e.p>=CASH?' cash':'')+'" data-name="'+e.n+'"><span>'+e.n+'</span><span><span class="rank">#'+e.r+'</span> <span class="pts">'+e.p+'</span></span></div>').join('');
-    drop.classList.add('show');
-    drop.querySelectorAll('.dropdown-item').forEach(item => {
-      item.addEventListener('click', function() { const n=this.dataset.name; drop.classList.remove('show'); inp.value=''; onSelect(n); });
-    });
-  });
-  inp.addEventListener('focus', function() { if(this.value.length>=1)this.dispatchEvent(new Event('input')); });
-  document.addEventListener('click', function(ev) { if(!ev.target.closest('#'+inputId)&&!ev.target.closest('#'+dropId))drop.classList.remove('show'); });
+// ---- SEARCH ----
+function wireSearch(inputId,dropId,onSelect){
+  const inp=document.getElementById(inputId),drop=document.getElementById(dropId);
+  inp.addEventListener('input',function(){const q=this.value.toLowerCase().trim();if(q.length<1){drop.classList.remove('show');return;}
+    const m=ENTRIES.filter(e=>e.n.toLowerCase().includes(q)).slice(0,40);if(!m.length){drop.classList.remove('show');return;}
+    drop.innerHTML=m.map(e=>'<div class="dropdown-item'+(e.p>=CASH?' cash':'')+'" data-name="'+e.n+'"><span>'+e.n+'</span><span><span class="rank">#'+e.r+'</span> <span class="pts">'+e.p+'</span></span></div>').join('');
+    drop.classList.add('show');drop.querySelectorAll('.dropdown-item').forEach(item=>{item.addEventListener('click',function(){const n=this.dataset.name;drop.classList.remove('show');inp.value='';onSelect(n);});});});
+  inp.addEventListener('focus',function(){if(this.value.length>=1)this.dispatchEvent(new Event('input'));});
+  document.addEventListener('click',function(ev){if(!ev.target.closest('#'+inputId)&&!ev.target.closest('#'+dropId))drop.classList.remove('show');});
 }
-wireSearch('searchSingle','dropSingle', name => { document.getElementById('searchSingle').value=name; const e=ENTRIES.find(x=>x.n===name); if(e)renderSingle(e); });
-wireSearch('searchCompare','dropCompare', name => addCompare(name));
+wireSearch('searchSingle','dropSingle',name=>{document.getElementById('searchSingle').value=name;const e=ENTRIES.find(x=>x.n===name);if(e)renderSingle(e);});
+wireSearch('searchCompare','dropCompare',name=>addCompare(name));
 
-function switchTab(tab) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
-  document.getElementById('singleMode').classList.toggle('hidden', tab!=='single');
-  document.getElementById('compareMode').classList.toggle('hidden', tab!=='compare');
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  document.getElementById('singleMode').classList.toggle('hidden',tab!=='single');
+  document.getElementById('compareMode').classList.toggle('hidden',tab!=='compare');
 }
 
-// ── LIVE ──────────────────────────────────────────────────────
-let liveTimer = null, isLive = false;
-function toggleLive() { if(isLive) stopLive(); else startLive(); }
+// ---- LIVE ----
+let liveTimer=null,isLive=false;
+function toggleLive(){if(isLive)stopLive();else startLive();}
 
-function startLive() {
-  isLive = true;
-  document.getElementById('liveBtn').textContent = 'Stop Live';
-  document.getElementById('liveBtn').style.background = 'var(--red)';
-  document.getElementById('liveLeaderboard').classList.remove('hidden');
-  fetchLive();
-  liveTimer = setInterval(fetchLive, parseInt(document.getElementById('pollInterval').value)*1000);
+function startLive(){
+  isLive=true;document.getElementById('liveBtn').textContent='Stop Live';document.getElementById('liveBtn').style.background='var(--red)';
+  document.getElementById('liveLeaderboard').classList.remove('hidden');fetchLive();
+  liveTimer=setInterval(fetchLive,parseInt(document.getElementById('pollInterval').value)*1000);
 }
-function stopLive() {
-  isLive = false;
-  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
-  document.getElementById('liveBtn').textContent = 'Start Live';
-  document.getElementById('liveBtn').style.background = 'var(--green)';
-  document.getElementById('liveStatus').textContent = 'Stopped';
-  document.getElementById('liveStatus').style.color = 'var(--t3)';
+function stopLive(){
+  isLive=false;if(liveTimer){clearInterval(liveTimer);liveTimer=null;}
+  document.getElementById('liveBtn').textContent='Start Live';document.getElementById('liveBtn').style.background='var(--green)';
+  document.getElementById('liveStatus').textContent='Stopped';document.getElementById('liveStatus').style.color='var(--t3)';
 }
 
-async function fetchLive() {
-  document.getElementById('liveStatus').textContent = 'Fetching...';
-  document.getElementById('liveStatus').style.color = 'var(--amber)';
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    const resp = await fetch(VERCEL_URL+'/api/leaderboard', {signal:controller.signal});
-    clearTimeout(timeout);
-    if (!resp.ok) throw new Error('HTTP '+resp.status);
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error);
+async function fetchLive(){
+  document.getElementById('liveStatus').textContent='Fetching...';document.getElementById('liveStatus').style.color='var(--amber)';
+  try{
+    const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),15000);
+    const resp=await fetch(VERCEL_URL+'/api/leaderboard',{signal:controller.signal});clearTimeout(timeout);
+    if(!resp.ok)throw new Error('HTTP '+resp.status);const data=await resp.json();if(data.error)throw new Error(data.error);
     renderLiveLeaderboard(data);
-    let scoresUpdated = 0, oddsUpdated = 0;
-    if (data.players) {
-      // Store scores
-      data.players.forEach(p => {
-        const score = parseInt(p.total);
-        if (!isNaN(score)) { PLAYER_SCORES[p.name] = score; scoresUpdated++; }
-      });
-      // Apply cut line against fresh scores — simple last-name match
-      if (CUT_LINE !== null) {
-        ENTRIES.forEach(e => {
-          e.l.forEach(lineupName => {
-            const lineupLast = lineupName.split(' ').pop().toLowerCase();
-            for (const [liveName, score] of Object.entries(PLAYER_SCORES)) {
-              if (liveName.split(' ').pop().toLowerCase() === lineupLast && score > CUT_LINE) {
-                CUT_PLAYERS.add(lineupName); break;
-              }
-            }
-          });
-        });
-        updateCutStatus();
-      }
-      // Update odds
-      const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      const oddsKeyMap = {};
-      Object.keys(ODDS).forEach(k => { oddsKeyMap[norm(k)] = k; });
-      data.players.forEach(p => {
-        if (p.odds !== null && p.odds > 0) {
-          const nName = norm(p.name);
-          const ek = oddsKeyMap[nName];
-          if (ek) { ODDS[ek] = p.odds; } else { ODDS[p.name] = p.odds; oddsKeyMap[nName] = p.name; }
-          oddsUpdated++;
-        }
-      });
-      if (oddsUpdated > 0 || scoresUpdated > 0) {
-        recomputeFieldAvgs(); renderFieldTable();
-        if (currentSingleEntry) {
-          const fresh = ENTRIES.find(x => x.n===currentSingleEntry.n && x.r===currentSingleEntry.r);
-          if (fresh) renderSingle(fresh);
-        }
-        if (cmpEntries.length >= 2 && !document.getElementById('cmpDash').classList.contains('hidden')) renderCompare();
-        saveToStorage();
-      }
+    let scoresUpdated=0,oddsUpdated=0;
+    if(data.players){
+      // Store scores keyed by player name
+      data.players.forEach(p=>{const score=parseInt(p.total);if(!isNaN(score)){PLAYER_SCORES[p.name]=score;scoresUpdated++;}});
+      // Mark cuts from live feed STATUS (not score comparison)
+      applyCutsFromLiveStatus(data.players);
+      // Update odds — use NFD normalization for odds matching only (not cut logic)
+      const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');const oddsKeyMap={};Object.keys(ODDS).forEach(k=>{oddsKeyMap[norm(k)]=k;});
+      data.players.forEach(p=>{if(p.odds!==null&&p.odds>0){const nName=norm(p.name);const ek=oddsKeyMap[nName];if(ek){ODDS[ek]=p.odds;}else{ODDS[p.name]=p.odds;oddsKeyMap[nName]=p.name;}oddsUpdated++;}});
+      if(oddsUpdated>0||scoresUpdated>0){recomputeFieldAvgs();refreshViews();saveToStorage();}
     }
-    const now = new Date();
-    document.getElementById('liveStatus').textContent = 'Live — '+data.playerCount+' players'+(oddsUpdated>0?' — '+oddsUpdated+' odds':'')+(CUT_PLAYERS.size>0?' — '+CUT_PLAYERS.size+' cut':'')+' — '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    document.getElementById('liveStatus').style.color = 'var(--green)';
-    document.getElementById('timestamp').textContent = 'Data from '+fmt(lastUploadTime)+' (live '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+')';
-  } catch(err) {
-    const msg = err.name==='TypeError' ? 'Network error — check connection or proxy' : err.message;
-    document.getElementById('liveStatus').innerHTML = 'Error: '+msg+' <button onclick="fetchLive()" style="margin-left:8px;padding:2px 8px;font-size:11px">Retry</button>';
-    document.getElementById('liveStatus').style.color = 'var(--red)';
+    const now=new Date();
+    document.getElementById('liveStatus').textContent='Live — '+data.playerCount+' players'+(oddsUpdated>0?' — '+oddsUpdated+' odds':'')+(CUT_PLAYERS.size>0?' — '+CUT_PLAYERS.size+' cut':'')+' — '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    document.getElementById('liveStatus').style.color='var(--green)';
+    document.getElementById('timestamp').textContent='Data from '+fmt(lastUploadTime)+' (live '+now.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+')';
+  }catch(err){
+    const msg=err.name==='TypeError'?'Network error — check connection or proxy':err.message;
+    document.getElementById('liveStatus').innerHTML='Error: '+msg+' <button onclick="fetchLive()" style="margin-left:8px;padding:2px 8px;font-size:11px">Retry</button>';
+    document.getElementById('liveStatus').style.color='var(--red)';
   }
 }
 
-function renderLiveLeaderboard(data) {
-  const tbody = document.getElementById('liveBody');
-  tbody.innerHTML = data.players.slice(0,80).map(p => {
-    const isCut = p.status==='CUT'||p.status==='WITHDRAWN'||p.status==='WD';
-    const statusColor = isCut?'var(--t3)':p.status==='COMPLETE'?'var(--blue)':'var(--green)';
-    const statusLabel = isCut?'CUT':p.status==='COMPLETE'?'F':'&#9679;';
-    const totalVal = parseInt(p.total)||0;
-    const parColor = totalVal<0?'var(--red)':totalVal>0?'var(--t2)':'var(--t1)';
-    const inLineup = ENTRIES.some(e => e.l.includes(p.name));
+function renderLiveLeaderboard(data){
+  const tbody=document.getElementById('liveBody');
+  tbody.innerHTML=data.players.slice(0,80).map(p=>{
+    const isCut=p.status==='CUT'||p.status==='WITHDRAWN'||p.status==='WD';
+    const statusColor=isCut?'var(--t3)':p.status==='COMPLETE'?'var(--blue)':'var(--green)';
+    const statusLabel=isCut?'CUT':p.status==='COMPLETE'?'F':'&#9679;';
+    const totalVal=parseInt(p.total)||0;const parColor=totalVal<0?'var(--red)':totalVal>0?'var(--t2)':'var(--t1)';
+    const inLineup=ENTRIES.some(e=>e.l.includes(p.name));
     return '<tr style="border-bottom:1px solid var(--border);'+(inLineup?'background:rgba(59,130,246,.08);':'')+(isCut?'opacity:.5;':'')+'">'+
       '<td style="padding:4px 6px;font-family:var(--mono);color:var(--t2)">'+p.position+'</td>'+
       '<td style="padding:4px 6px;color:var(--t1);font-weight:'+(inLineup?'600':'400')+'">'+p.name+(inLineup?' &#9733;':'')+'</td>'+
@@ -1080,16 +1036,15 @@ function renderLiveLeaderboard(data) {
   }).join('');
 }
 
-// ── INIT ──────────────────────────────────────────────────────
-(function init() {
-  const stored = loadFromStorage();
-  if (stored) {
-    loadData(stored, true);
-    document.getElementById('singleEmpty').innerHTML = '<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Data loaded from previous session</div><div style="font-size:13px">Search for any entry or upload new CSV</div>';
-    renderFieldTable();
-    autoLoadDrinkMilk(); // ← DrinkMilk on page load
-  } else {
-    document.getElementById('timestamp').textContent = 'Upload CSV to begin';
+// ---- INIT ----
+(function init(){
+  const stored=loadFromStorage();
+  if(stored){
+    loadData(stored,true);
+    document.getElementById('singleEmpty').innerHTML='<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Data loaded from previous session</div><div style="font-size:13px">Search for any entry or upload new CSV</div>';
+    autoLoadDrinkMilk(); // FIX 3: after loadData completes
+  }else{
+    document.getElementById('timestamp').textContent='Upload CSV to begin';
   }
   startLive();
 })();
