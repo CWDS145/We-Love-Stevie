@@ -239,9 +239,15 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
         <div id="sPassBreakdown"></div>
       </div>
     </div>
-    <div class="card" style="margin-bottom:16px">
-      <div class="sec" style="margin-top:0">Field scatter — points vs holes</div>
-      <div class="chart-wrap"><canvas id="sScatter"></canvas></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="sec" style="margin-top:0">Actual Current Rank — points vs holes</div>
+        <div class="chart-wrap"><canvas id="sScatter"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="sec" style="margin-top:0">Stevie's Power Rank — score vs points</div>
+        <div class="chart-wrap"><canvas id="sPowerScatter"></canvas></div>
+      </div>
     </div>
     <div id="sAnalysis"></div>
     <div class="card" style="margin-bottom:16px">
@@ -269,9 +275,15 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       <table class="rank-table"><thead><tr><th style="width:40px">#</th><th>Entry</th><th>Points</th><th>Rank</th><th>Stevie's Rank</th><th>Power Score</th><th>Holes</th><th>Active</th></tr></thead><tbody id="rankBody"></tbody></table>
     </div>
     <div class="cmp-grid" id="cmpColumns"></div>
-    <div class="card" style="margin-bottom:16px">
-      <div class="sec" style="margin-top:0">Field position — all entries</div>
-      <div class="chart-wrap"><canvas id="cmpScatter"></canvas></div>
+    <div class="grid2">
+      <div class="card">
+        <div class="sec" style="margin-top:0">Actual Current Rank — all entries</div>
+        <div class="chart-wrap"><canvas id="cmpScatter"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="sec" style="margin-top:0">Stevie's Power Rank — all entries</div>
+        <div class="chart-wrap"><canvas id="cmpPowerScatter"></canvas></div>
+      </div>
     </div>
     <div class="card" style="margin-bottom:16px">
       <div class="sec" style="margin-top:0">Lineup odds comparison</div>
@@ -734,7 +746,7 @@ function loadPreset(names){
 }
 
 // ---- SINGLE MODE ----
-let sCompChart=null,sScatterChart=null;
+let sCompChart=null,sScatterChart=null,sPowerScatterChart=null;
 
 function renderSingle(entry){
   currentSingleEntry=entry;
@@ -788,6 +800,17 @@ function renderSingle(entry){
   ENTRIES.forEach(x=>{if(x.p===0&&x.h===0)return;const pt={x:x.h,y:x.p};if(x.n===entry.n&&x.r===entry.r)sel.push(pt);else if(x.p>=CASH)cs.push(pt);else if(x.p>entry.p)bw.push(pt);else bl.push(pt);});
   const yMax=Math.max(380,...ENTRIES.map(e=>e.p))+10;
   sScatterChart=new Chart(ctx2,{type:'scatter',data:{datasets:[{data:cs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},{data:bw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},{data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{data:bl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
+  // Power Rank scatter: X=power score, Y=points
+  const ctx3=document.getElementById('sPowerScatter');if(sPowerScatterChart)sPowerScatterChart.destroy();
+  const pcs=[],pbw=[],pbl=[],psel=[];const myPS=powerScore(entry).score;
+  ENTRIES.forEach(x=>{if(x.p===0)return;const ps=powerScore(x).score;if(ps<=0)return;const pt={x:ps,y:x.p};if(x.n===entry.n&&x.r===entry.r)psel.push(pt);else if(x.p>=CASH)pcs.push(pt);else if(x.p>entry.p)pbw.push(pt);else pbl.push(pt);});
+  const psMax=Math.max(0.5,...ENTRIES.map(x=>powerScore(x).score))*1.05;
+  sPowerScatterChart=new Chart(ctx3,{type:'scatter',data:{datasets:[
+    {data:pcs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},
+    {data:pbw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},
+    {data:psel,backgroundColor:'#a855f7',borderColor:'#7c3aed',pointRadius:10,pointStyle:'triangle',order:1},
+    {data:pbl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Power Score (Σ 1/odds)',color:'#5c6478',font:{size:11}},min:0,max:psMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl3',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ac=document.getElementById('sAnalysis');const pph=entry.h>0?(gap/entry.h).toFixed(2):'∞';
   if(ok)ac.innerHTML='<div class="callout callout-green"><b>In the money.</b> '+(-gap).toFixed(1)+' pt cushion.</div>';
   else if(gap<10)ac.innerHTML='<div class="callout callout-amber"><b>Bubble.</b> '+gap.toFixed(1)+' pts back.</div>';
@@ -800,7 +823,7 @@ function renderSingle(entry){
 }
 
 // ---- COMPARE MODE ----
-let cmpEntries=[],cmpScatterChart=null,cmpOddsChart=null;
+let cmpEntries=[],cmpScatterChart=null,cmpPowerScatterChart=null,cmpOddsChart=null;
 
 function addCompare(name){
   if(cmpEntries.length>=3||cmpEntries.find(x=>x.n===name))return;const e=ENTRIES.find(x=>x.n===name);if(!e)return;
@@ -850,6 +873,13 @@ function renderCompare(){
   cmpEntries.forEach((e,i)=>{ds.push({label:e.n,data:[{x:e.h,y:e.p}],backgroundColor:COLORS[i],borderColor:COLORS[i],pointRadius:10,pointStyle:'triangle',order:1});});
   const yMax=Math.max(380,...ENTRIES.map(e=>e.p))+10;
   cmpScatterChart=new Chart(ctx,{type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
+  // Compare Power Rank scatter: X=power score, Y=points
+  const ctxPS=document.getElementById('cmpPowerScatter');if(cmpPowerScatterChart)cmpPowerScatterChart.destroy();
+  const pField=ENTRIES.filter(x=>x.p>0).map(x=>({x:powerScore(x).score,y:x.p})).filter(x=>x.x>0);
+  const pds=[{data:pField,backgroundColor:'rgba(255,255,255,.04)',borderColor:'rgba(255,255,255,.08)',pointRadius:1.5,order:10}];
+  cmpEntries.forEach((e,i)=>{pds.push({label:e.n,data:[{x:powerScore(e).score,y:e.p}],backgroundColor:COLORS[i],borderColor:COLORS[i],pointRadius:10,pointStyle:'triangle',order:1});});
+  const psMax=Math.max(0.5,...pField.map(p=>p.x))*1.05;
+  cmpPowerScatterChart=new Chart(ctxPS,{type:'scatter',data:{datasets:pds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{title:{display:true,text:'Power Score (Σ 1/odds)',color:'#5c6478',font:{size:11}},min:0,max:psMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl4',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ctx2=document.getElementById('cmpOddsChart');if(cmpOddsChart)cmpOddsChart.destroy();
   const labels=['Cashing avg','Non-cash avg',...cmpEntries.map(e=>e.n)];const vals=[fieldCashAvg,fieldNonCashAvg,...data.map(d=>d.odds.avg||0)];
   cmpOddsChart=new Chart(ctx2,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:['#22c55e','#f59e0b',...COLORS.slice(0,nc)],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Avg lineup odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,max:Math.max(450,...vals)+50,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
