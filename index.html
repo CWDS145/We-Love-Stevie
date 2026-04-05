@@ -165,8 +165,6 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <label>Tournament</label>
   <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:200px">
   <button onclick="updateTournament()">Set</button>
-  <span style="margin-left:12px;font-size:13px;color:var(--amber-t);font-family:var(--mono);font-weight:600">Cash line: <span id="cashLineDisplay">—</span> pts</span>
-  <span style="font-size:11px;color:var(--t3);margin-left:6px">(auto: top 45%)</span>
 </div>
 
 <div class="config-row">
@@ -461,7 +459,6 @@ function loadData(d,fromStorage=false){
   if(d.uploadTime)lastUploadTime=d.uploadTime;
   if(d.tournament)document.getElementById('tournamentInput').value=d.tournament;
   if(d.cutPlayersInput)document.getElementById('cutPlayersInput').value=d.cutPlayersInput;
-  document.getElementById('cashLineDisplay').textContent=CASH;
   document.getElementById('cutLineInput').value=CUT_LINE!==null?CUT_LINE:'';
   updateCutStatus();recomputeFieldAvgs();
   const tourney=document.getElementById('tournamentInput').value.trim();
