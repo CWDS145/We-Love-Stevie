@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.1 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.2 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -299,7 +299,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard v3.1 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.2 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -393,7 +393,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.1 — 2026-04-10';
+const VERSION = 'v3.2 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -424,10 +424,8 @@ function getPowerRank(e) {
 
 function computeCashLine() {
   if (!ENTRIES.length) { CASH = 0; return; }
-  POWER_CACHE = null;
-  computePowerRanks();
   const cashRank = Math.round(ENTRIES.length * 0.45);
-  const sorted = [...ENTRIES].sort((a, b) => powerScore(b) - powerScore(a));
+  const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
   CASH = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
 }
 let CUT_PLAYERS = new Set();
