@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.3 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.4 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -304,7 +304,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard v3.3 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.4 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -398,7 +398,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.3 — 2026-04-10';
+const VERSION = 'v3.4 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -849,7 +849,7 @@ function renderSingle(entry) {
   document.getElementById('sPts').style.color = inCashByPower ? 'var(--green)' : 'var(--red)';
   document.getElementById('sPtsGap').textContent = inCashByPower ? 'Projected to cash' : 'Projected below cutoff';
   document.getElementById('sHoles').textContent = entry.h;
-  document.getElementById('sHolesSub').textContent = Math.round(entry.h/36) + ' of 6 playing';
+  document.getElementById('sHolesSub').textContent = Math.round((432-entry.h)/432*100) + '% complete';
   document.getElementById('sOdds').textContent = ps > 0 ? ps.toFixed(4) : 'N/A';
   document.getElementById('sOdds').style.color = inCashByPower ? 'var(--green)' : 'var(--red)';
   document.getElementById('sOddsPctl').textContent = pr ? 'Power Rank #' + pr + ' of ' + TOTAL : '';
@@ -897,7 +897,8 @@ function renderSingle(entry) {
     else bl.push(pt);
   });
   const yMax = Math.max(380,...ENTRIES.map(e=>e.p))+10;
-  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets:[{data:cs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},{data:bw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},{data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{data:bl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
+  const xMax = Math.max(230,...ENTRIES.map(e=>e.h))+10;
+  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets:[{data:cs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},{data:bw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},{data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{data:bl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:xMax,ticks:{stepSize:72,color:'#5c6478',callback:v=>v+' ('+Math.round(v/72)+'rds)'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ac = document.getElementById('sAnalysis');
   if (inCashByPower) ac.innerHTML = '<div class="callout callout-green"><b>Projected to cash.</b> Power Rank #' + pr + ' of ' + TOTAL + ' (top ' + Math.round(pr/TOTAL*100) + '%).</div>';
   else ac.innerHTML = '<div class="callout callout-red"><b>Projected below cutoff.</b> Power Rank #' + pr + ' — needs #' + cashRankForChart + ' or better to cash.</div>';
@@ -976,7 +977,8 @@ function renderCompare() {
   const ds = [{data:field,backgroundColor:'rgba(255,255,255,.04)',borderColor:'rgba(255,255,255,.08)',pointRadius:1.5,order:10}];
   cmpEntries.forEach((e,i) => { ds.push({label:e.n,data:[{x:e.h,y:e.p}],backgroundColor:COLORS[i],borderColor:COLORS[i],pointRadius:10,pointStyle:'triangle',order:1}); });
   const yMax = Math.max(380,...ENTRIES.map(e=>e.p))+10;
-  cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
+  const xMax = Math.max(230,...ENTRIES.map(e=>e.h))+10;
+  cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:xMax,ticks:{stepSize:72,color:'#5c6478',callback:v=>v+' ('+Math.round(v/72)+'rds)'},grid:{color:'#1a1f2a'}},y:{min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ctx2 = document.getElementById('cmpOddsChart');
   if (cmpOddsChart) cmpOddsChart.destroy();
   const labels = cmpEntries.map(e=>e.n);
