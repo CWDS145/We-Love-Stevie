@@ -7,6 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{--bg:#0c0f14;--bg2:#141820;--bg3:#1a1f2a;--card:#171c26;--border:#2a3040;--border2:#3a4560;--t1:#ffffff;--t2:#ffffff;--t3:#ffffff;--green:#22c55e;--green-bg:rgba(34,197,94,.12);--green-t:#16a34a;--red:#ef4444;--red-bg:rgba(239,68,68,.12);--red-t:#f87171;--amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);--amber-t:#fbbf24;--blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);--blue-t:#60a5fa;--purple:#a855f7;--purple-bg:rgba(168,85,247,.12);--purple-t:#c084fc;--teal:#14b8a6;--teal-bg:rgba(20,184,166,.12);--teal-t:#5eead4;--r:8px;--r2:12px;--font:'DM Sans',system-ui,sans-serif;--mono:'JetBrains Mono',monospace}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -645,16 +646,28 @@ function showStatus(msg, ok) {
   if (ok) setTimeout(() => statusDiv.classList.add('hidden'), 5000);
 }
 
+// v2.0 — ZIP-aware handleFile (JSZip + ArrayBuffer)
 function handleFile(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
-      const data = parseCSV(e.target.result);
+      const buf = e.target.result;
+      const bytes = new Uint8Array(buf);
+      const isZip = bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4B;
+      let csvText;
+      if (isZip) {
+        if (typeof JSZip === 'undefined') throw new Error('JSZip not loaded');
+        const zip = await JSZip.loadAsync(buf);
+        const csvEntry = Object.values(zip.files).find(f => !f.dir && /\.csv$/i.test(f.name));
+        if (!csvEntry) throw new Error('No .csv found inside ZIP');
+        csvText = await csvEntry.async('string');
+      } else {
+        csvText = new TextDecoder('utf-8').decode(buf);
+      }
+      const data = parseCSV(csvText);
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
-      // Preserve cuts & scores across reload
-      // Reset cuts on fresh upload — user must re-enter cut line each tournament
       data.cutPlayers = [];
       data.cutLine = null;
       data.playerScores = {};
@@ -665,14 +678,13 @@ function handleFile(file) {
       document.getElementById('cutNamesInput').value = '';
       loadData(data);
       renderFieldTable();
-      autoLoadDrinkMilk(); // ← load DrinkMilk after every upload
-      recordScoreSnapshot(); // ← snapshot scores for chart
-      showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' players with odds.', true);
+      autoLoadDrinkMilk();
+      recordScoreSnapshot();
+      showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' players with odds' + (isZip ? ' (from ZIP)' : '') + '.', true);
     } catch(err) { showStatus('Parse error: ' + err.message, false); }
   };
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(file);
 }
-
 fileInput.addEventListener('change', function() { handleFile(this.files[0]); this.value = ''; });
 uploadZone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
 uploadZone.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
