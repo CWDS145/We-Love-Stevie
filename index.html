@@ -1137,8 +1137,11 @@ function recordScoreSnapshot() {
     const m = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
     scores[name] = m ? m.p : null;
   });
-  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(x => x.h)) : 0;
-  SCORE_HISTORY.push({time:now, label, scores, maxHoles, cash:CASH});
+  // entry.h = TimeRemaining (holes left, NOT played). Progress = furthest-along entry.
+  const validRem = ENTRIES.map(x => x.h).filter(x => x > 0);
+  const minRemaining = validRem.length ? Math.min(...validRem) : 432;
+  const holesPlayed = Math.max(0, 432 - minRemaining);
+  SCORE_HISTORY.push({time:now, label, scores, holesPlayed, cash:CASH});
   try { localStorage.setItem(HIST_KEY, JSON.stringify(SCORE_HISTORY)); } catch(e) {}
   renderScoreChart();
   updateScoreHistoryInfo();
@@ -1186,12 +1189,14 @@ function renderScoreChart() {
   }));
   // Cash line
 // Cash line — prorated to holes played at each snapshot (432 = 6 players × 72 holes)
+  // Cash line
+// Cash line — prorated (rises from 0 → CASH as tournament progresses)
   datasets.push({
     label: 'Cash line (prorated)',
     data: SCORE_HISTORY.map(s => {
       const c = s.cash !== undefined ? s.cash : CASH;
-      const h = s.maxHoles !== undefined ? s.maxHoles : 0;
-      return Math.round(c * (h/432) * 10) / 10;
+      const hp = s.holesPlayed !== undefined ? s.holesPlayed : 0;
+      return Math.round(c * (hp/432) * 10) / 10;
     }),
     borderColor: '#ef4444',
     borderWidth: 1.5,
