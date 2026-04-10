@@ -1185,9 +1185,14 @@ function renderScoreChart() {
     spanGaps: true
   }));
   // Cash line
+// Cash line — prorated to holes played at each snapshot (432 = 6 players × 72 holes)
   datasets.push({
-    label: 'Cash line',
-    data: SCORE_HISTORY.map(() => CASH),
+    label: 'Cash line (prorated)',
+    data: SCORE_HISTORY.map(s => {
+      const c = s.cash !== undefined ? s.cash : CASH;
+      const h = s.maxHoles !== undefined ? s.maxHoles : 0;
+      return Math.round(c * (h/432) * 10) / 10;
+    }),
     borderColor: '#ef4444',
     borderWidth: 1.5,
     borderDash: [6,4],
