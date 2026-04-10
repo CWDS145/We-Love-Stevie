@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.2 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.3 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -187,6 +187,11 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <label>Tournament</label>
   <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:200px">
   <button onclick="updateTournament()">Set</button>
+  <label style="margin-left:16px">Cash line</label>
+  <input type="number" id="cashLineInput" value="" step="0.5" placeholder="auto" style="width:90px">
+  <button onclick="applyManualCash()">Override</button>
+  <button onclick="clearCashOverride()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Auto</button>
+  <span id="cashInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
 </div>
 
 <div class="config-row">
@@ -299,7 +304,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard v3.2 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.3 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -393,10 +398,79 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.2 — 2026-04-10';
+const VERSION = 'v3.3 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
+let CASH_OVERRIDE = null;
+const CASH_CORR_KEY = 'weLoveStevieDashboard_cashCorr';
+
+function loadCashCorrections() {
+  try { return JSON.parse(localStorage.getItem(CASH_CORR_KEY)) || []; } catch(e) { return []; }
+}
+function saveCashCorrection(factor) {
+  const corrs = loadCashCorrections();
+  corrs.push({ factor, time: Date.now() });
+  if (corrs.length > 20) corrs.shift();
+  try { localStorage.setItem(CASH_CORR_KEY, JSON.stringify(corrs)); } catch(e) {}
+}
+function avgCorrectionFactor() {
+  const corrs = loadCashCorrections();
+  if (!corrs.length) return 1;
+  return corrs.reduce((s,c) => s + c.factor, 0) / corrs.length;
+}
+
+function computeCashLine() {
+  if (!ENTRIES.length) { CASH = 0; return; }
+  if (CASH_OVERRIDE !== null) { CASH = CASH_OVERRIDE; updateCashInfo(); return; }
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
+  const rawCash = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
+  const factor = avgCorrectionFactor();
+  CASH = Math.round(rawCash * factor * 10) / 10;
+  updateCashInfo(rawCash, factor);
+}
+
+function updateCashInfo(rawCash, factor) {
+  const el = document.getElementById('cashInfo');
+  if (!el) return;
+  if (CASH_OVERRIDE !== null) {
+    el.innerHTML = '<span style="color:var(--amber-t)">Manual: ' + CASH + '</span>';
+  } else if (factor && factor !== 1) {
+    el.innerHTML = 'Auto: ' + CASH + ' (raw ' + rawCash + ' × ' + factor.toFixed(3) + ' correction)';
+  } else {
+    el.innerHTML = 'Auto: ' + CASH;
+  }
+  const inp = document.getElementById('cashLineInput');
+  if (inp) inp.placeholder = CASH;
+}
+
+function applyManualCash() {
+  const v = parseFloat(document.getElementById('cashLineInput').value);
+  if (isNaN(v) || v <= 0) return;
+  // Compute raw 45% for correction factor
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
+  const rawCash = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
+  if (rawCash > 0) saveCashCorrection(v / rawCash);
+  CASH_OVERRIDE = v;
+  CASH = v;
+  POWER_CACHE = null;
+  updateCashInfo();
+  recomputeFieldAvgs(); renderFieldTable(); refreshViews(); saveToStorage();
+  const tourney = document.getElementById('tournamentInput').value.trim();
+  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (manual)';
+}
+
+function clearCashOverride() {
+  CASH_OVERRIDE = null;
+  document.getElementById('cashLineInput').value = '';
+  computeCashLine();
+  POWER_CACHE = null;
+  recomputeFieldAvgs(); renderFieldTable(); refreshViews(); saveToStorage();
+  const tourney = document.getElementById('tournamentInput').value.trim();
+  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (auto)';
+}
 
 function powerScore(e) {
   let score = 0;
@@ -496,7 +570,7 @@ function saveToStorage() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       entries: ENTRIES, odds: ODDS, freq: FREQ,
-      total: TOTAL,
+      total: TOTAL, cashOverride: CASH_OVERRIDE,
       uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value
@@ -523,6 +597,8 @@ function fmt(ts) {
 // ── DATA LOAD ──────────────────────────────────────────────────
 function loadData(d, fromStorage = false) {
   TOTAL = d.total; ODDS = d.odds; FREQ = d.freq; ENTRIES = d.entries;
+  CASH_OVERRIDE = d.cashOverride !== undefined ? d.cashOverride : null;
+  if (CASH_OVERRIDE !== null) document.getElementById('cashLineInput').value = CASH_OVERRIDE;
   computeCashLine();
   CUT_PLAYERS = new Set();
   CUT_LINE = null;
@@ -533,7 +609,7 @@ function loadData(d, fromStorage = false) {
   document.getElementById('cutLineInput').value = CUT_LINE !== null ? CUT_LINE : '';
   updateCutStatus(); recomputeFieldAvgs();
   const tourney = document.getElementById('tournamentInput').value.trim();
-  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (top 45%)';
+  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (' + (CASH_OVERRIDE !== null ? 'manual' : 'auto') + ')';
   if (lastUploadTime) {
     document.getElementById('dataBadge').textContent = 'UPLOADED: ' + fmt(lastUploadTime);
     document.getElementById('dataBadge').style.background = 'var(--green-bg)';
@@ -580,7 +656,7 @@ function refreshViews() {
 
 function updateTournament() {
   const tourney = document.getElementById('tournamentInput').value.trim();
-  if (TOTAL > 0) document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (top 45%)';
+  if (TOTAL > 0) document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (' + (CASH_OVERRIDE !== null ? 'manual' : 'auto') + ')';
   saveToStorage();
 }
 
@@ -722,7 +798,8 @@ function loadPreset(names) {
 // ── FIELD DISTRIBUTION TABLE ─────────────────────────────────
 function renderFieldTable() {
   if (!ENTRIES.length) return;
-  const cashSlots = Math.round(TOTAL * 0.45);
+  // Derive cash cutoff rank from CASH points value
+  const cashSlots = ENTRIES.filter(e => e.p >= CASH).length || Math.round(TOTAL * 0.45);
   const buckets = [];
   for (let i = 0; i < ENTRIES.length; i += 25) {
     buckets.push([i+1, Math.min(i+25, ENTRIES.length)]);
