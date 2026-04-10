@@ -135,7 +135,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <div class="icon">&#128228;</div>
   <div class="title">Drop updated CSV here or click to upload</div>
   <div class="hint">Same format as DraftKings export — Rank, EntryName, Points, Lineup, Betting Odds columns</div>
-  <input type="file" id="fileInput" accept=".csv,.txt">
+  <input type="file" id="fileInput" accept=".csv,.txt,.zip">
 </div>
 <div id="uploadStatus" class="hidden"></div>
 
@@ -186,11 +186,6 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <label>Tournament</label>
   <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:200px">
   <button onclick="updateTournament()">Set</button>
-  <label style="margin-left:8px">Cash line (pts)</label>
-  <input type="number" id="cashLineInput" value="222" step="0.5">
-  <button onclick="updateCashLine()">Apply</button>
-  <span id="cashHistoryInfo" style="font-size:12px;margin-left:8px"></span>
-  <button onclick="clearCashHistory()" style="margin-left:4px;font-size:11px;padding:4px 8px">Clear History</button>
 </div>
 
 <div class="config-row">
@@ -303,7 +298,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard — Built with Chart.js + PapaParse</div>
+<div class="footer">We Love Stevie Dashboard — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -398,7 +393,14 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
 
-let CASH = 222, CASH_HISTORY = [], TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
+let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
+
+function computeCashLine() {
+  if (!ENTRIES.length) { CASH = 0; return; }
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
+  CASH = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
+}
 let CUT_PLAYERS = new Set();
 let CUT_LINE = null;
 let PLAYER_SCORES = {};
@@ -407,7 +409,6 @@ let currentSingleEntry = null;
 let cmpEntries = [];
 
 // ── CUT LOGIC ──────────────────────────────────────────────────
-// Last-name match only. Scores come from live feed.
 function applyScoreCuts() {
   if (CUT_LINE === null) return;
   ENTRIES.forEach(e => {
@@ -464,8 +465,8 @@ function isPlayerCut(p) { return CUT_PLAYERS.has(p); }
 function saveToStorage() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      entries: ENTRIES, odds: ODDS, freq: FREQ, cashLine: CASH,
-      cashHistory: CASH_HISTORY, total: TOTAL,
+      entries: ENTRIES, odds: ODDS, freq: FREQ,
+      total: TOTAL,
       uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value
@@ -491,20 +492,18 @@ function fmt(ts) {
 
 // ── DATA LOAD ──────────────────────────────────────────────────
 function loadData(d, fromStorage = false) {
-  CASH = d.cashLine || CASH;
-  CASH_HISTORY = d.cashHistory || [];
   TOTAL = d.total; ODDS = d.odds; FREQ = d.freq; ENTRIES = d.entries;
-  CUT_PLAYERS = new Set(); // never restore cuts from storage — always enter fresh
+  computeCashLine();
+  CUT_PLAYERS = new Set();
   CUT_LINE = null;
   PLAYER_SCORES = {};
   if (d.uploadTime) lastUploadTime = d.uploadTime;
   if (d.tournament) document.getElementById('tournamentInput').value = d.tournament;
   if (d.cutNamesInput) document.getElementById('cutNamesInput').value = d.cutNamesInput;
-  document.getElementById('cashLineInput').value = CASH;
   document.getElementById('cutLineInput').value = CUT_LINE !== null ? CUT_LINE : '';
-  updateCutStatus(); recomputeFieldAvgs(); updateCashHistoryDisplay();
+  updateCutStatus(); recomputeFieldAvgs();
   const tourney = document.getElementById('tournamentInput').value.trim();
-  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts';
+  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (top 45%)';
   if (lastUploadTime) {
     document.getElementById('dataBadge').textContent = 'UPLOADED: ' + fmt(lastUploadTime);
     document.getElementById('dataBadge').style.background = 'var(--green-bg)';
@@ -515,7 +514,6 @@ function loadData(d, fromStorage = false) {
   if (!fromStorage) saveToStorage();
 }
 
-// Always called after loadData to show DrinkMilk
 function autoLoadDrinkMilk() {
   const dm = ENTRIES.find(x => x.n.toLowerCase().includes('drinkmilk'));
   if (dm) {
@@ -550,51 +548,11 @@ function refreshViews() {
   if (cmpEntries.length >= 2) renderCompare();
 }
 
-function updateCashLine() {
-  const v = parseFloat(document.getElementById('cashLineInput').value);
-  if (isNaN(v) || v <= 0) return;
-  CASH = v;
-  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(e => e.h)) : 0;
-  CASH_HISTORY.push({ value: v, time: Date.now(), maxHoles });
-  recomputeFieldAvgs(); updateCashHistoryDisplay();
-  const tourney = document.getElementById('tournamentInput').value.trim();
-  document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts';
-  refreshViews(); saveToStorage();
-}
-
-function getProjectedCashLine() {
-  const currentMax = ENTRIES.length ? Math.max(...ENTRIES.map(e => e.h)) : 0;
-  const holesRemaining = 432 - currentMax;
-  if (CASH_HISTORY.length < 2) return { projected: CASH, rate: 0, holesRemaining, confidence: 'low' };
-  const sorted = [...CASH_HISTORY].sort((a,b) => a.maxHoles - b.maxHoles);
-  const first = sorted[0], last = sorted[sorted.length-1];
-  const holeDiff = last.maxHoles - first.maxHoles;
-  const ptsDiff = last.value - first.value;
-  if (holeDiff <= 0) return { projected: CASH, rate: 0, holesRemaining, confidence: 'low' };
-  const ratePerHole = ptsDiff / holeDiff;
-  let confidence = 'low';
-  if (CASH_HISTORY.length >= 3 && holeDiff >= 36) confidence = 'medium';
-  if (CASH_HISTORY.length >= 4 && holeDiff >= 72) confidence = 'high';
-  return { projected: Math.round((CASH + ratePerHole * holesRemaining)*10)/10, rate: Math.round(ratePerHole*1000)/1000, holesRemaining, confidence };
-}
-
-function updateCashHistoryDisplay() {
-  const el = document.getElementById('cashHistoryInfo');
-  if (!el) return;
-  if (CASH_HISTORY.length < 2) { el.innerHTML = '<span style="color:#888">Need 2+ to project</span>'; return; }
-  const proj = getProjectedCashLine();
-  const arrow = proj.rate > 0 ? '↑' : proj.rate < 0 ? '↓' : '→';
-  const color = proj.rate > 0.3 ? 'var(--red)' : proj.rate > 0.1 ? 'var(--amber)' : 'var(--green)';
-  el.innerHTML = `<span style="color:${color}">${arrow} ${Math.abs(proj.rate).toFixed(2)} pts/hole</span> → <strong style="color:${color}">${proj.projected}</strong> <span style="color:#888">(${proj.holesRemaining}h, ${proj.confidence})</span>`;
-}
-
 function updateTournament() {
   const tourney = document.getElementById('tournamentInput').value.trim();
-  if (TOTAL > 0) document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts';
+  if (TOTAL > 0) document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (top 45%)';
   saveToStorage();
 }
-
-function clearCashHistory() { CASH_HISTORY = []; updateCashHistoryDisplay(); saveToStorage(); }
 
 // ── CSV PARSE ──────────────────────────────────────────────────
 function parseCSV(text) {
@@ -631,10 +589,10 @@ function parseCSV(text) {
   const total = entries.length;
   const freqPct = {};
   Object.keys(freq).forEach(p => { freqPct[p] = Math.round(freq[p]/total*1000)/10; });
-  return { entries, odds, freq: freqPct, total, cashLine: CASH };
+  return { entries, odds, freq: freqPct, total };
 }
 
-// ── FILE HANDLING ──────────────────────────────────────────────
+// ── FILE HANDLING (v2.0 — ZIP-aware) ───────────────────────────
 const uploadZone = document.getElementById('uploadZone');
 const fileInput = document.getElementById('fileInput');
 const statusDiv = document.getElementById('uploadStatus');
@@ -646,7 +604,6 @@ function showStatus(msg, ok) {
   if (ok) setTimeout(() => statusDiv.classList.add('hidden'), 5000);
 }
 
-// v2.0 — ZIP-aware handleFile (JSZip + ArrayBuffer)
 function handleFile(file) {
   if (!file) return;
   const reader = new FileReader();
@@ -685,6 +642,7 @@ function handleFile(file) {
   };
   reader.readAsArrayBuffer(file);
 }
+
 fileInput.addEventListener('change', function() { handleFile(this.files[0]); this.value = ''; });
 uploadZone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('dragover'); });
 uploadZone.addEventListener('dragleave', function() { this.classList.remove('dragover'); });
@@ -1038,12 +996,10 @@ async function fetchLive() {
     renderLiveLeaderboard(data);
     let scoresUpdated = 0, oddsUpdated = 0;
     if (data.players) {
-      // Store scores
       data.players.forEach(p => {
         const score = parseInt(p.total);
         if (!isNaN(score)) { PLAYER_SCORES[p.name] = score; scoresUpdated++; }
       });
-      // Apply cut line against fresh scores — simple last-name match
       if (CUT_LINE !== null) {
         ENTRIES.forEach(e => {
           e.l.forEach(lineupName => {
@@ -1057,7 +1013,6 @@ async function fetchLive() {
         });
         updateCutStatus();
       }
-      // Update odds
       const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       const oddsKeyMap = {};
       Object.keys(ODDS).forEach(k => { oddsKeyMap[norm(k)] = k; });
@@ -1120,14 +1075,13 @@ function getSundayStart() {
   const now = new Date();
   const d = new Date(now);
   d.setHours(0,0,0,0);
-  d.setDate(now.getDate() - now.getDay()); // back to Sunday
+  d.setDate(now.getDate() - now.getDay());
   return d.getTime();
 }
 
 function recordScoreSnapshot() {
   if (!ENTRIES.length) return;
   const sundayStart = getSundayStart();
-  // Wipe if history predates this week's Sunday
   if (SCORE_HISTORY.length > 0 && SCORE_HISTORY[0].time < sundayStart) SCORE_HISTORY = [];
   const now = Date.now();
   const label = new Date(now).toLocaleDateString('en-US',{weekday:'short'}) + ' ' +
@@ -1137,11 +1091,7 @@ function recordScoreSnapshot() {
     const m = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
     scores[name] = m ? m.p : null;
   });
-  // entry.h = TimeRemaining (holes left, NOT played). Progress = furthest-along entry.
-  const validRem = ENTRIES.map(x => x.h).filter(x => x > 0);
-  const minRemaining = validRem.length ? Math.min(...validRem) : 432;
-  const holesPlayed = Math.max(0, 432 - minRemaining);
-  SCORE_HISTORY.push({time:now, label, scores, holesPlayed, cash:CASH});
+  SCORE_HISTORY.push({time:now, label, scores});
   try { localStorage.setItem(HIST_KEY, JSON.stringify(SCORE_HISTORY)); } catch(e) {}
   renderScoreChart();
   updateScoreHistoryInfo();
@@ -1187,24 +1137,6 @@ function renderScoreChart() {
     tension: 0.3,
     spanGaps: true
   }));
-  // Cash line
-// Cash line — prorated to holes played at each snapshot (432 = 6 players × 72 holes)
-  // Cash line
-// Cash line — prorated (rises from 0 → CASH as tournament progresses)
-  datasets.push({
-    label: 'Cash line (prorated)',
-    data: SCORE_HISTORY.map(s => {
-      const c = s.cash !== undefined ? s.cash : CASH;
-      const hp = s.holesPlayed !== undefined ? s.holesPlayed : 0;
-      return Math.round(c * (hp/432) * 10) / 10;
-    }),
-    borderColor: '#ef4444',
-    borderWidth: 1.5,
-    borderDash: [6,4],
-    pointRadius: 0,
-    tension: 0,
-    fill: false
-  });
   if (scoreChart) scoreChart.destroy();
   scoreChart = new Chart(canvas, {
     type: 'line',
@@ -1226,11 +1158,10 @@ function renderScoreChart() {
 
 // ── INIT ──────────────────────────────────────────────────────
 (function init() {
-  // Compute this Monday 00:00:00 local time
   const now = new Date();
   const monday = new Date(now);
   monday.setHours(0,0,0,0);
-  const dow = monday.getDay(); // 0=Sun,1=Mon,...
+  const dow = monday.getDay();
   monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
   const mondayTs = monday.getTime();
 
@@ -1246,12 +1177,11 @@ function renderScoreChart() {
     autoLoadDrinkMilk();
   } else {
     if (isStale && stored) {
-      // Monday reset — wipe everything
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(HIST_KEY);
       ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
       CUT_PLAYERS = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
-      CASH_HISTORY = []; SCORE_HISTORY = [];
+      SCORE_HISTORY = [];
     }
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
   }
