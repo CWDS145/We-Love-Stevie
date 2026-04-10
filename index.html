@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.5 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.6 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -304,7 +304,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard v3.5 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.6 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -398,7 +398,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.5 — 2026-04-10';
+const VERSION = 'v3.6 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -457,7 +457,7 @@ function applyManualCash() {
   CASH = v;
   POWER_CACHE = null;
   updateCashInfo();
-  recomputeFieldAvgs(); renderFieldTable(); refreshViews(); saveToStorage();
+  recomputeFieldAvgs(); renderFieldTable(); refreshViews(); renderScoreChart(); saveToStorage();
   const tourney = document.getElementById('tournamentInput').value.trim();
   document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (manual)';
 }
@@ -467,7 +467,7 @@ function clearCashOverride() {
   document.getElementById('cashLineInput').value = '';
   computeCashLine();
   POWER_CACHE = null;
-  recomputeFieldAvgs(); renderFieldTable(); refreshViews(); saveToStorage();
+  recomputeFieldAvgs(); renderFieldTable(); refreshViews(); renderScoreChart(); saveToStorage();
   const tourney = document.getElementById('tournamentInput').value.trim();
   document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (auto)';
 }
