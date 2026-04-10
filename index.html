@@ -465,8 +465,7 @@ function saveToStorage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       entries: ENTRIES, odds: ODDS, freq: FREQ, cashLine: CASH,
       cashHistory: CASH_HISTORY, total: TOTAL,
-      cutPlayers: Array.from(CUT_PLAYERS), cutLine: CUT_LINE,
-      playerScores: PLAYER_SCORES, uploadTime: lastUploadTime,
+      uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value
     }));
@@ -494,9 +493,9 @@ function loadData(d, fromStorage = false) {
   CASH = d.cashLine || CASH;
   CASH_HISTORY = d.cashHistory || [];
   TOTAL = d.total; ODDS = d.odds; FREQ = d.freq; ENTRIES = d.entries;
-  CUT_PLAYERS = new Set(d.cutPlayers || []);
-  CUT_LINE = (d.cutLine !== undefined && d.cutLine !== null) ? d.cutLine : null;
-  PLAYER_SCORES = d.playerScores || {};
+  CUT_PLAYERS = new Set(); // never restore cuts from storage — always enter fresh
+  CUT_LINE = null;
+  PLAYER_SCORES = {};
   if (d.uploadTime) lastUploadTime = d.uploadTime;
   if (d.tournament) document.getElementById('tournamentInput').value = d.tournament;
   if (d.cutNamesInput) document.getElementById('cutNamesInput').value = d.cutNamesInput;
@@ -1204,14 +1203,33 @@ function renderScoreChart() {
 
 // ── INIT ──────────────────────────────────────────────────────
 (function init() {
+  // Compute this Monday 00:00:00 local time
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setHours(0,0,0,0);
+  const dow = monday.getDay(); // 0=Sun,1=Mon,...
+  monday.setDate(monday.getDate() - (dow === 0 ? 6 : dow - 1));
+  const mondayTs = monday.getTime();
+
   const stored = loadFromStorage();
-  if (stored) {
+  const uploadTime = stored && stored.uploadTime ? new Date(stored.uploadTime).getTime() : 0;
+  const isStale = uploadTime < mondayTs;
+
+  if (stored && !isStale) {
     loadData(stored, true);
     document.getElementById('singleEmpty').innerHTML = '<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Data loaded from previous session</div><div style="font-size:13px">Search for any entry or upload new CSV</div>';
     renderFieldTable();
-    loadScoreHistory(); // ← restore chart history
-    autoLoadDrinkMilk(); // ← DrinkMilk on page load
+    loadScoreHistory();
+    autoLoadDrinkMilk();
   } else {
+    if (isStale && stored) {
+      // Monday reset — wipe everything
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(HIST_KEY);
+      ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
+      CUT_PLAYERS = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
+      CASH_HISTORY = []; SCORE_HISTORY = [];
+    }
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
   }
   startLive();
