@@ -1,3 +1,4 @@
+<!-- We Love Stevie Dashboard v3.1 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -220,11 +221,11 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       <div class="card metric"><div class="label">Rank</div><div class="val" id="sRank">—</div><div class="sub" id="sRankSub">of —</div></div>
       <div class="card metric"><div class="label">Points</div><div class="val" id="sPts">—</div><div class="sub" id="sPtsGap"></div></div>
       <div class="card metric"><div class="label">Holes Left</div><div class="val" id="sHoles">—</div><div class="sub" id="sHolesSub"></div></div>
-      <div class="card metric"><div class="label">Avg Lineup Odds</div><div class="val" id="sOdds">—</div><div class="sub" id="sOddsPctl"></div></div>
+      <div class="card metric"><div class="label">Power Score</div><div class="val" id="sOdds">—</div><div class="sub" id="sOddsPctl"></div></div>
     </div>
     <div class="card" style="margin-bottom:16px">
       <div style="display:flex;align-items:center;margin-bottom:2px">
-        <div style="font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:.5px">Estimated cash probability</div>
+        <div style="font-size:11px;color:#ffffff;text-transform:uppercase;letter-spacing:.5px">Stevie's power projection</div>
         <button class="info-btn" onclick="document.getElementById('probModal').classList.add('open')" title="How is this calculated?">?</button>
       </div>
       <div class="gauge-wrap"><div class="gauge-bar"><div class="gauge-fill" id="sGaugeBar"></div></div><div class="gauge-label" id="sGaugeLabel">—</div></div>
@@ -236,7 +237,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
         <table class="player-table"><thead><tr><th>Player</th><th>Odds</th><th>Win %</th><th>Field %</th></tr></thead><tbody id="sPlayerBody"></tbody></table>
       </div>
       <div class="card">
-        <div class="sec" style="margin-top:0">Odds vs field</div>
+        <div class="sec" style="margin-top:0">Power score vs cutoff</div>
         <div class="chart-wrap" style="height:200px"><canvas id="sCompChart"></canvas></div>
         <div class="sec">Entries to pass</div>
         <div id="sPassBreakdown"></div>
@@ -269,7 +270,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <div id="cmpDash" class="hidden">
     <div class="card" style="margin-bottom:16px">
       <div class="sec" style="margin-top:0">Head-to-head ranking</div>
-      <table class="rank-table"><thead><tr><th style="width:40px">#</th><th>Entry</th><th>Points</th><th>Rank</th><th>Cash Prob</th><th>Avg Odds</th><th>Holes</th><th>Active</th></tr></thead><tbody id="rankBody"></tbody></table>
+      <table class="rank-table"><thead><tr><th style="width:40px">#</th><th>Entry</th><th>Points</th><th>Rank</th><th>Power Score</th><th>Power Rank</th><th>Holes</th><th>Active</th></tr></thead><tbody id="rankBody"></tbody></table>
     </div>
     <div class="cmp-grid" id="cmpColumns"></div>
     <div class="card" style="margin-bottom:16px">
@@ -277,7 +278,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       <div class="chart-wrap"><canvas id="cmpScatter"></canvas></div>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <div class="sec" style="margin-top:0">Lineup odds comparison</div>
+      <div class="sec" style="margin-top:0">Power score comparison</div>
       <div class="chart-wrap" style="height:250px"><canvas id="cmpOddsChart"></canvas></div>
     </div>
     <div class="card" style="margin-bottom:16px">
@@ -298,7 +299,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.1 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -392,13 +393,41 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
+const VERSION = 'v3.1 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
+let POWER_CACHE = null;
+
+function powerScore(e) {
+  let score = 0;
+  e.l.forEach(p => {
+    if (!isPlayerCut(p) && ODDS[p] !== undefined && ODDS[p] > 0) {
+      score += 1 / ODDS[p];
+    }
+  });
+  return Math.round(score * 10000) / 10000;
+}
+
+function computePowerRanks() {
+  if (POWER_CACHE) return;
+  if (!ENTRIES.length) { POWER_CACHE = new Map(); return; }
+  const scored = ENTRIES.map(e => ({ key: e.n + '|' + e.r, score: powerScore(e) }));
+  scored.sort((a, b) => b.score - a.score);
+  POWER_CACHE = new Map();
+  scored.forEach((s, i) => POWER_CACHE.set(s.key, i + 1));
+}
+
+function getPowerRank(e) {
+  computePowerRanks();
+  return POWER_CACHE.get(e.n + '|' + e.r) || null;
+}
 
 function computeCashLine() {
   if (!ENTRIES.length) { CASH = 0; return; }
+  POWER_CACHE = null;
+  computePowerRanks();
   const cashRank = Math.round(ENTRIES.length * 0.45);
-  const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
+  const sorted = [...ENTRIES].sort((a, b) => powerScore(b) - powerScore(a));
   CASH = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
 }
 let CUT_PLAYERS = new Set();
@@ -411,6 +440,7 @@ let cmpEntries = [];
 // ── CUT LOGIC ──────────────────────────────────────────────────
 function applyScoreCuts() {
   if (CUT_LINE === null) return;
+  POWER_CACHE = null;
   ENTRIES.forEach(e => {
     e.l.forEach(lineupName => {
       const lineupLast = lineupName.split(' ').pop().toLowerCase();
@@ -443,12 +473,14 @@ function applyNameCuts() {
   fragments.forEach(frag => {
     allNames.forEach(p => { if (p.toLowerCase().includes(frag)) CUT_PLAYERS.add(p); });
   });
+  POWER_CACHE = null;
   updateCutStatus(); refreshViews(); saveToStorage();
   showStatus('Marked ' + CUT_PLAYERS.size + ' player(s) cut.', true);
 }
 
 function clearAllCuts() {
   CUT_PLAYERS.clear(); CUT_LINE = null;
+  POWER_CACHE = null;
   document.getElementById('cutLineInput').value = '';
   document.getElementById('cutNamesInput').value = '';
   updateCutStatus(); refreshViews(); saveToStorage();
@@ -664,43 +696,17 @@ function getOdds(e) {
 }
 
 function cashProb(e) {
-  const totalEntries = ENTRIES.length;
-  if (!totalEntries) return 0;
-  const gap = CASH - e.p;
-  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(x=>x.h)) : 0;
-  const completionPct = maxHoles / (72*6);
-  const activePlayers = e.l.filter(p => !isPlayerCut(p) && ODDS[p] !== undefined).length;
-  const totalPlayers = e.l.filter(p => !isPlayerCut(p)).length || 1;
-  const holesLeftPerPlayer = Math.max(0, maxHoles - e.h) / Math.max(totalPlayers, 1);
-  const remainingSwing = activePlayers * holesLeftPerPlayer * 0.5;
-  if (gap > 0) {
-    const holesLeft = Math.max(0, maxHoles - e.h);
-    const pphNeeded = holesLeft > 0 ? gap / holesLeft : Infinity;
-    const entriesBetween = ENTRIES.filter(x => x.p > e.p && x.p < CASH).length;
-    const entriesAtCash = ENTRIES.filter(x => x.p >= CASH).length;
-    const cashSlots = Math.round(totalEntries * 0.45);
-    const slotsOpen = Math.max(0, cashSlots - entriesAtCash);
-    const rankFactor = slotsOpen > 0 ? Math.min(0.85, slotsOpen/(entriesBetween+slotsOpen+1)) : 0.05;
-    let gapPenalty;
-    if (holesLeft === 0) gapPenalty = 0.02;
-    else if (pphNeeded > 8) gapPenalty = 0.05;
-    else if (pphNeeded > 5) gapPenalty = 0.15;
-    else if (pphNeeded > 3) gapPenalty = 0.30;
-    else if (pphNeeded > 1.5) gapPenalty = 0.50;
-    else if (pphNeeded > 0.5) gapPenalty = 0.70;
-    else gapPenalty = 0.85;
-    gapPenalty *= (1 - Math.pow(completionPct, 1.5) * 0.5);
-    return Math.min(60, Math.max(1, Math.round(rankFactor * gapPenalty * 100)));
+  if (!ENTRIES.length) return 0;
+  const pr = getPowerRank(e);
+  if (pr === null) return 0;
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  if (cashRank <= 0) return 0;
+  if (pr <= cashRank) {
+    return Math.round(55 + 40 * (1 - pr / cashRank));
+  } else {
+    const below = ENTRIES.length - cashRank;
+    return Math.max(1, Math.round(45 * (1 - (pr - cashRank) / below)));
   }
-  const cushion = e.p - CASH;
-  const swingRisk = remainingSwing > 0 ? Math.max(0, Math.min(1, cushion/(cushion+remainingSwing))) : 1;
-  const baseCertainty = (0.55 + completionPct*0.40) * (0.6 + swingRisk*0.4);
-  if (cushion > 50) return Math.min(97, Math.round(97*baseCertainty));
-  if (cushion > 20) return Math.min(94, Math.round(90*baseCertainty));
-  if (cushion > 10) return Math.min(88, Math.round(80*baseCertainty));
-  if (cushion > 5)  return Math.min(80, Math.round(70*baseCertainty));
-  if (cushion > 2)  return Math.min(72, Math.round(60*baseCertainty));
-  return Math.min(65, Math.round(50*baseCertainty));
 }
 
 function oddsClass(v) { return v < 50 ? 'odds-good' : v < 200 ? 'odds-mid' : 'odds-bad'; }
@@ -734,12 +740,14 @@ function renderFieldTable() {
     const group = ENTRIES.filter(e => e.r >= lo && e.r <= hi);
     const counts = cols.map(n => group.filter(e => e.l.filter(p => !isPlayerCut(p)).length === n).length);
     const inCash = hi <= cashSlots;
-    const atBubble = lo <= cashSlots && hi > cashSlots;
+    const belowCash = lo > cashSlots;
+    const atBubble = !inCash && !belowCash;
     let rowBg = '';
     if (inCash) rowBg = 'background:rgba(34,197,94,.05)';
     else if (atBubble) rowBg = 'background:rgba(245,158,11,.05)';
+    else rowBg = 'background:rgba(239,68,68,.05)';
     return '<tr style="border-bottom:1px solid var(--border);' + rowBg + '">' +
-      '<td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:' + (inCash?'var(--green)':atBubble?'var(--amber-t)':'var(--t2)') + '">' + lo + '–' + hi + '</td>' +
+      '<td style="padding:6px 8px;font-family:var(--mono);font-size:12px;color:' + (inCash?'var(--green)':atBubble?'var(--amber-t)':'var(--red-t)') + '">' + lo + '–' + hi + '</td>' +
       counts.map((c, i) => {
         const color = c === 0 ? 'var(--t3)' : i === 0 ? 'var(--green)' : i === 1 ? 'var(--amber-t)' : 'var(--t2)';
         return '<td style="text-align:center;padding:6px 8px;font-family:var(--mono);font-size:12px;color:' + color + '">' + (c || '—') + '</td>';
@@ -757,23 +765,24 @@ function renderSingle(entry) {
   document.getElementById('singleDash').classList.remove('hidden');
   document.getElementById('singleEmpty').classList.add('hidden');
   const o = getOdds(entry), gap = CASH - entry.p, ok = gap <= 0, prob = cashProb(entry);
+  const ps = powerScore(entry), pr = getPowerRank(entry);
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const inCashByPower = pr !== null && pr <= cashRank;
   document.getElementById('sRank').textContent = entry.r;
   document.getElementById('sRankSub').textContent = 'of ' + TOTAL;
   document.getElementById('sPts').textContent = entry.p;
-  document.getElementById('sPts').style.color = ok ? 'var(--green)' : 'var(--red)';
-  document.getElementById('sPtsGap').textContent = ok ? 'Cashing! +' + (-gap).toFixed(1) : gap.toFixed(1) + ' below cash';
+  document.getElementById('sPts').style.color = inCashByPower ? 'var(--green)' : 'var(--red)';
+  document.getElementById('sPtsGap').textContent = inCashByPower ? 'Projected to cash' : 'Projected below cutoff';
   document.getElementById('sHoles').textContent = entry.h;
   document.getElementById('sHolesSub').textContent = Math.round(entry.h/36) + ' of 6 playing';
-  document.getElementById('sOdds').textContent = o.avg ? o.avg.toFixed(1) : 'N/A';
-  document.getElementById('sOdds').style.color = o.avg ? (o.avg<fieldCashAvg?'var(--green)':o.avg<fieldNonCashAvg?'var(--amber)':'var(--red)') : 'var(--t3)';
-  let worse = 0, tot = 0;
-  ENTRIES.forEach(x => { const xo = getOdds(x); if (xo.avg!==null){tot++;if(xo.avg>(o.avg||0))worse++;} });
-  document.getElementById('sOddsPctl').textContent = o.avg ? 'Better than ' + Math.round(worse/tot*100) + '% of field' : '';
+  document.getElementById('sOdds').textContent = ps > 0 ? ps.toFixed(4) : 'N/A';
+  document.getElementById('sOdds').style.color = inCashByPower ? 'var(--green)' : 'var(--red)';
+  document.getElementById('sOddsPctl').textContent = pr ? 'Power Rank #' + pr + ' of ' + TOTAL : '';
   const gb = document.getElementById('sGaugeBar');
   gb.style.width = prob + '%'; gb.style.background = probColor(prob);
   document.getElementById('sGaugeLabel').textContent = prob + '%';
   document.getElementById('sGaugeLabel').style.color = probColor(prob);
-  document.getElementById('sGaugeExplain').textContent = ok ? 'Currently in the money.' : gap<10 ? 'Within striking distance.' : gap<20 ? 'Significant ground to cover.' : 'Very steep climb needed.';
+  document.getElementById('sGaugeExplain').textContent = inCashByPower ? 'Power Rank #' + pr + ' — top ' + Math.round(pr/TOTAL*100) + '% (cutoff: #' + cashRank + ')' : 'Power Rank #' + pr + ' — needs top ' + Math.round(cashRank/TOTAL*100) + '% (cutoff: #' + cashRank + ')';
   const tbody = document.getElementById('sPlayerBody'); tbody.innerHTML = '';
   const withOdds = o.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);
   const noOdds = o.active.filter(x=>x.odds===null);
@@ -788,22 +797,18 @@ function renderSingle(entry) {
     tbody.appendChild(tr);
   });
   const totTr = document.createElement('tr'); totTr.className = 'total-row';
-  totTr.innerHTML = '<td>Average (active)</td><td><span class="odds-pill '+(o.avg?oddsClass(o.avg):'odds-cut')+'">'+(o.avg?o.avg.toFixed(1):'N/A')+'</span></td><td style="font-family:var(--mono);font-size:12px">'+(o.avg?(1/o.avg*100).toFixed(3)+'%':'—')+'</td><td></td>';
+  totTr.innerHTML = '<td>Power Score</td><td colspan="3" style="font-family:var(--mono);font-size:14px;font-weight:600;color:'+probColor(prob)+'">'+ps.toFixed(4)+' — Power Rank #'+(pr||'—')+'</td>';
   tbody.appendChild(totTr);
   const ctx1 = document.getElementById('sCompChart');
   if (sCompChart) sCompChart.destroy();
-  sCompChart = new Chart(ctx1, {type:'bar',data:{labels:['Cashing avg','Non-cash avg','This entry'],datasets:[{data:[fieldCashAvg,fieldNonCashAvg,o.avg||0],backgroundColor:['#22c55e','#f59e0b','#3b82f6'],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Avg odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{y:{beginAtZero:true,max:Math.max(400,(o.avg||0)+50),ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},x:{ticks:{color:'#9ca3b4',font:{size:11}},grid:{display:false}}}}});
+  const cashRankForChart = Math.round(ENTRIES.length * 0.45);
+  const cashCutoffScore = cashRankForChart > 0 ? (function(){ const s=[...ENTRIES].sort((a,b)=>powerScore(b)-powerScore(a)); return cashRankForChart<=s.length?powerScore(s[cashRankForChart-1]):0; })() : 0;
+  sCompChart = new Chart(ctx1, {type:'bar',data:{labels:['This entry','Cash cutoff'],datasets:[{data:[ps,cashCutoffScore],backgroundColor:['#3b82f6','#ef4444'],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Power Score (higher = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{y:{beginAtZero:true,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},x:{ticks:{color:'#9ca3b4',font:{size:11}},grid:{display:false}}}}});
   const pd = document.getElementById('sPassBreakdown');
-  if (ok) { pd.innerHTML = '<div style="color:var(--green);font-size:13px;padding:8px 0">Above cash line!</div>'; }
+  if (inCashByPower) { pd.innerHTML = '<div style="color:var(--green);font-size:13px;padding:8px 0">Projected to cash — Power Rank #' + pr + ' (cutoff: #' + cashRankForChart + ')</div>'; }
   else {
-    const btw = ENTRIES.filter(x => x.p > entry.p && x.p < CASH);
-    let fw=0,sm=0,mr=0;
-    btw.forEach(x => { if(x.h<entry.h)fw++; else if(x.h===entry.h)sm++; else mr++; });
-    const t = btw.length || 1;
-    pd.innerHTML = ['fewer','same','more'].map((l,i) => {
-      const v=[fw,sm,mr][i], c=['var(--red)','var(--amber)','var(--blue)'][i];
-      return '<div class="bar-row"><div class="bar-label">'+['Fewer holes','Same holes','More holes'][i]+'</div><div class="bar-track"><div class="bar-fill" style="width:'+Math.round(v/t*100)+'%;background:'+c+'">'+v+'</div></div><div class="bar-val">'+Math.round(v/t*100)+'%</div></div>';
-    }).join('') + '<div style="font-size:11px;color:var(--t3);margin-top:6px">'+btw.length+' entries to pass</div>';
+    const entriesToPass = pr - cashRankForChart;
+    pd.innerHTML = '<div style="color:var(--red);font-size:13px;padding:8px 0">' + entriesToPass + ' entries to pass by power rank to reach top 45% (cutoff: #' + cashRankForChart + ')</div>';
   }
   const ctx2 = document.getElementById('sScatter');
   if (sScatterChart) sScatterChart.destroy();
@@ -819,10 +824,8 @@ function renderSingle(entry) {
   const yMax = Math.max(380,...ENTRIES.map(e=>e.p))+10;
   sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets:[{data:cs,backgroundColor:'rgba(34,197,94,.12)',borderColor:'rgba(34,197,94,.35)',pointRadius:2,order:4},{data:bw,backgroundColor:'rgba(245,158,11,.2)',borderColor:'rgba(245,158,11,.4)',pointRadius:2,order:3},{data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{data:bl,backgroundColor:'rgba(255,255,255,.03)',borderColor:'rgba(255,255,255,.06)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ac = document.getElementById('sAnalysis');
-  const pph = entry.h > 0 ? (gap/entry.h).toFixed(2) : '∞';
-  if (ok) ac.innerHTML = '<div class="callout callout-green"><b>In the money.</b> '+(-gap).toFixed(1)+' pt cushion.</div>';
-  else if (gap < 10) ac.innerHTML = '<div class="callout callout-amber"><b>Bubble.</b> '+gap.toFixed(1)+' pts back.</div>';
-  else ac.innerHTML = '<div class="callout callout-red"><b>'+(gap>25?'Long shot':'Uphill')+'.</b> '+gap.toFixed(1)+' pts = '+pph+' pts/hole needed.</div>';
+  if (inCashByPower) ac.innerHTML = '<div class="callout callout-green"><b>Projected to cash.</b> Power Rank #' + pr + ' of ' + TOTAL + ' (top ' + Math.round(pr/TOTAL*100) + '%).</div>';
+  else ac.innerHTML = '<div class="callout callout-red"><b>Projected below cutoff.</b> Power Rank #' + pr + ' — needs #' + cashRankForChart + ' or better to cash.</div>';
   const above = ENTRIES.filter(x => x.r < entry.r && x.l.length > 0);
   const ov = document.getElementById('sOverlap');
   const od = entry.l.map(p => {
@@ -854,14 +857,14 @@ function renderCompare() {
   chips.innerHTML = cmpEntries.map((e,i) => '<div class="chip '+CHIP_CLS[i]+'">'+e.n+' <span class="x" onclick="removeCompare('+i+')">&times;</span></div>').join('');
   if (cmpEntries.length < 2) { document.getElementById('cmpDash').classList.add('hidden'); return; }
   document.getElementById('cmpDash').classList.remove('hidden');
-  const data = cmpEntries.map(e => ({entry:e, odds:getOdds(e), prob:cashProb(e), gap:CASH-e.p}));
-  const ranked = [...data].sort((a,b) => b.prob-a.prob||(b.entry.p-a.entry.p));
+  const data = cmpEntries.map(e => ({entry:e, odds:getOdds(e), prob:cashProb(e), gap:CASH-e.p, ps:powerScore(e), pr:getPowerRank(e)}));
+  const ranked = [...data].sort((a,b) => a.pr-b.pr);
   const rb = document.getElementById('rankBody'); rb.innerHTML = '';
   ranked.forEach((d,i) => {
     const bgcol = i===0?'var(--green-bg)':i===1?'var(--amber-bg)':'var(--red-bg)';
     const col = i===0?'var(--green)':i===1?'var(--amber-t)':'var(--red-t)';
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')">?</button></td><td style="font-family:var(--mono)">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
+    tr.innerHTML = '<td><span class="rank-num" style="background:'+bgcol+';color:'+col+'">'+(i+1)+'</span></td><td style="font-weight:600">'+d.entry.n+'</td><td style="font-family:var(--mono)">'+d.entry.p+'</td><td style="font-family:var(--mono)">#'+d.entry.r+'</td><td style="font-family:var(--mono);color:'+probColor(d.prob)+'">'+d.ps.toFixed(4)+'</td><td style="font-family:var(--mono)">#'+(d.pr||'—')+'</td><td style="font-family:var(--mono)">'+d.entry.h+'</td><td style="font-family:var(--mono)">'+d.odds.n+'/6</td>';
     rb.appendChild(tr);
   });
   const cols = document.getElementById('cmpColumns');
@@ -872,14 +875,16 @@ function renderCompare() {
     const wO = d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);
     const nO = d.odds.active.filter(x=>x.odds===null);
     const players = [...wO,...nO,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
+    const cashRank = Math.round(ENTRIES.length * 0.45);
+    const inCash = d.pr !== null && d.pr <= cashRank;
     return '<div class="cmp-col"><div class="cmp-rank-badge cmp-rank-'+(ri+1)+'">#'+(ri+1)+'</div>'+
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
       '<div class="cmp-stat"><span class="k">Points</span><span class="v">'+d.entry.p+'</span></div>'+
-      '<div class="cmp-stat"><span class="k">Rank</span><span class="v">#'+d.entry.r+'</span></div>'+
-      '<div class="cmp-stat"><span class="k">Cash prob</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.prob+'% <button class="info-btn" onclick="document.getElementById(\'probModal\').classList.add(\'open\')">?</button></span></div>'+
-      '<div class="cmp-stat"><span class="k">Gap</span><span class="v">'+(d.gap<=0?'<span style="color:var(--green)">IN</span>':d.gap.toFixed(1))+'</span></div>'+
+      '<div class="cmp-stat"><span class="k">DK Rank</span><span class="v">#'+d.entry.r+'</span></div>'+
+      '<div class="cmp-stat"><span class="k">Power Score</span><span class="v" style="color:'+probColor(d.prob)+'">'+d.ps.toFixed(4)+'</span></div>'+
+      '<div class="cmp-stat"><span class="k">Power Rank</span><span class="v" style="color:'+(inCash?'var(--green)':'var(--red)')+'">'+('#'+(d.pr||'—'))+'</span></div>'+
+      '<div class="cmp-stat"><span class="k">Projection</span><span class="v" style="color:'+(inCash?'var(--green)':'var(--red)')+'">'+(inCash?'CASH':'MISS')+'</span></div>'+
       '<div class="cmp-stat"><span class="k">Holes</span><span class="v">'+d.entry.h+' ('+Math.round(d.entry.h/36)+')</span></div>'+
-      '<div class="cmp-stat"><span class="k">Avg odds</span><span class="v">'+(d.odds.avg?d.odds.avg.toFixed(1):'N/A')+'</span></div>'+
       '<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">'+
       players.map(p => {
         const iC=p.isCut===true, hO=p.odds!==null;
@@ -899,9 +904,9 @@ function renderCompare() {
   cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{min:0,max:230,ticks:{stepSize:36,color:'#5c6478',callback:v=>v+'('+Math.round(v/36)+')'},grid:{color:'#1a1f2a'}},y:{min:80,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.7)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();}}]});
   const ctx2 = document.getElementById('cmpOddsChart');
   if (cmpOddsChart) cmpOddsChart.destroy();
-  const labels = ['Cashing avg','Non-cash avg',...cmpEntries.map(e=>e.n)];
-  const vals = [fieldCashAvg,fieldNonCashAvg,...data.map(d=>d.odds.avg||0)];
-  cmpOddsChart = new Chart(ctx2, {type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:['#22c55e','#f59e0b',...COLORS.slice(0,nc)],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Avg lineup odds (lower = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,max:Math.max(450,...vals)+50,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
+  const labels = cmpEntries.map(e=>e.n);
+  const vals = data.map(d=>d.ps);
+  cmpOddsChart = new Chart(ctx2, {type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:COLORS.slice(0,nc),borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Stevie Power Score (higher = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{x:{beginAtZero:true,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},y:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
   const allP = new Set();
   cmpEntries.forEach(e => e.l.forEach(p => allP.add(p)));
   const shared = [], unique = new Map();
@@ -1025,6 +1030,8 @@ async function fetchLive() {
         }
       });
       if (oddsUpdated > 0 || scoresUpdated > 0) {
+        POWER_CACHE = null;
+        computeCashLine();
         recomputeFieldAvgs(); renderFieldTable();
         if (currentSingleEntry) {
           const fresh = ENTRIES.find(x => x.n===currentSingleEntry.n && x.r===currentSingleEntry.r);
@@ -1137,6 +1144,16 @@ function renderScoreChart() {
     tension: 0.3,
     spanGaps: true
   }));
+  datasets.push({
+    label: 'Cash line (top 45%)',
+    data: SCORE_HISTORY.map(() => CASH),
+    borderColor: '#ef4444',
+    borderWidth: 1.5,
+    borderDash: [6,4],
+    pointRadius: 0,
+    tension: 0,
+    fill: false
+  });
   if (scoreChart) scoreChart.destroy();
   scoreChart = new Chart(canvas, {
     type: 'line',
