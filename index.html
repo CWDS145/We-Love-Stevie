@@ -1137,7 +1137,8 @@ function recordScoreSnapshot() {
     const m = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
     scores[name] = m ? m.p : null;
   });
-  SCORE_HISTORY.push({time:now, label, scores});
+  const maxHoles = ENTRIES.length ? Math.max(...ENTRIES.map(x => x.h)) : 0;
+  SCORE_HISTORY.push({time:now, label, scores, maxHoles, cash:CASH});
   try { localStorage.setItem(HIST_KEY, JSON.stringify(SCORE_HISTORY)); } catch(e) {}
   renderScoreChart();
   updateScoreHistoryInfo();
