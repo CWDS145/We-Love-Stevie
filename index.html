@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.9 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.10 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -192,6 +192,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <button onclick="applyManualCash()">Override</button>
   <button onclick="clearCashOverride()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Auto</button>
   <span id="cashInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
+  <button onclick="hardReset()" style="margin-left:auto;background:var(--red);color:#fff;font-size:11px;padding:6px 12px">HARD RESET</button>
 </div>
 
 <div class="config-row">
@@ -304,7 +305,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard v3.9 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.10 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -398,7 +399,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.9 — 2026-04-10';
+const VERSION = 'v3.10 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -470,6 +471,16 @@ function clearCashOverride() {
   recomputeFieldAvgs(); renderFieldTable(); refreshViews(); renderScoreChart(); saveToStorage();
   const tourney = document.getElementById('tournamentInput').value.trim();
   document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (auto)';
+}
+
+function hardReset() {
+  if (!confirm('HARD RESET will wipe all stored data, cash corrections, and score history. Continue?')) return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem('weLoveStevieDashboard_history');
+    localStorage.removeItem('weLoveStevieDashboard_cashCorr');
+  } catch(e) {}
+  location.reload();
 }
 
 function powerScore(e) {
@@ -924,6 +935,21 @@ function renderSingle(entry) {
     order: 5
   }));
   datasets.push({label:'This entry',data:sel,backgroundColor:'#ffffff',borderColor:'#1d4ed8',pointRadius:14,pointStyle:'triangle',borderWidth:2,order:1});
+  TRACKED_NAMES.forEach((tn, ti) => {
+    const match = ENTRIES.find(x => x.n.toLowerCase().includes(tn.toLowerCase()));
+    if (match && !(match.n===entry.n && match.r===entry.r)) {
+      datasets.push({
+        label: tn,
+        data: [{x: match.h, y: match.p}],
+        backgroundColor: TRACKED_COLORS[ti],
+        borderColor: '#ffffff',
+        borderWidth: 2,
+        pointRadius: 10,
+        pointStyle: 'rectRot',
+        order: 2
+      });
+    }
+  });
   const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
   const xMax = Math.max(...ENTRIES.map(e=>e.h))+10;
   sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:xMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}}}}});
