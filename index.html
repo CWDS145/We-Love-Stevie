@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.7 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.9 — 2026-04-10 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -249,7 +249,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       </div>
     </div>
     <div class="card" style="margin-bottom:16px">
-      <div class="sec" style="margin-top:0">Field scatter — points vs power rank</div>
+      <div class="sec" style="margin-top:0">Field scatter — points vs holes remaining</div>
       <div class="chart-wrap"><canvas id="sScatter"></canvas></div>
     </div>
     <div id="sAnalysis"></div>
@@ -279,7 +279,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
     </div>
     <div class="cmp-grid" id="cmpColumns"></div>
     <div class="card" style="margin-bottom:16px">
-      <div class="sec" style="margin-top:0">Field position — points vs power rank</div>
+      <div class="sec" style="margin-top:0">Field position — points vs holes remaining</div>
       <div class="chart-wrap"><canvas id="cmpScatter"></canvas></div>
     </div>
     <div class="card" style="margin-bottom:16px">
@@ -304,7 +304,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
 
-<div class="footer">We Love Stevie Dashboard v3.7 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.9 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
 
 <!-- PROB LOGIC MODAL -->
@@ -398,7 +398,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.7 — 2026-04-10';
+const VERSION = 'v3.9 — 2026-04-10';
 
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -890,19 +890,43 @@ function renderSingle(entry) {
   }
   const ctx2 = document.getElementById('sScatter');
   if (sScatterChart) sScatterChart.destroy();
-  const cs=[],bw=[],bl=[],sel=[];
-  const cashRankScatter = Math.round(ENTRIES.length * 0.45);
+  const cohortColor = h => {
+    if (h >= 216) return '#a855f7';
+    if (h >= 180) return '#3b82f6';
+    if (h >= 144) return '#22c55e';
+    if (h >= 108) return '#f97316';
+    if (h >= 72)  return '#eab308';
+    return '#ef4444';
+  };
+  const cohortLabel = h => {
+    if (h >= 216) return '216+';
+    if (h >= 180) return '180';
+    if (h >= 144) return '144';
+    if (h >= 108) return '108';
+    if (h >= 72)  return '72';
+    return '0-71';
+  };
+  const cohortBuckets = {};
+  const sel = [];
   ENTRIES.forEach(x => {
-    const xpr = getPowerRank(x);
-    if (xpr === null) return;
-    const pt={x:xpr,y:x.p};
-    if(x.n===entry.n&&x.r===entry.r)sel.push(pt);
-    else if(xpr<=cashRankScatter)cs.push(pt);
-    else bl.push(pt);
+    if (x.n===entry.n && x.r===entry.r) { sel.push({x:x.h,y:x.p}); return; }
+    const lbl = cohortLabel(x.h);
+    if (!cohortBuckets[lbl]) cohortBuckets[lbl] = { color: cohortColor(x.h), data: [] };
+    cohortBuckets[lbl].data.push({x:x.h, y:x.p});
   });
-  const yMax = Math.max(Math.max(...ENTRIES.map(e=>e.p)),CASH)+20;
-  const xMax = ENTRIES.length+5;
-  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets:[{label:'Projected cash',data:cs,backgroundColor:'rgba(34,197,94,.25)',borderColor:'rgba(34,197,94,.5)',pointRadius:2,order:4},{label:'This entry',data:sel,backgroundColor:'#3b82f6',borderColor:'#1d4ed8',pointRadius:10,pointStyle:'triangle',order:1},{label:'Projected miss',data:bl,backgroundColor:'rgba(239,68,68,.15)',borderColor:'rgba(239,68,68,.3)',pointRadius:1.5,order:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,font:{size:11}}}},scales:{x:{title:{display:true,text:'Power Rank',color:'#5c6478',font:{size:11}},min:1,max:xMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.8)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();const x=ch.scales.x.getPixelForValue(cashRankScatter);c.save();c.setLineDash([4,4]);c.strokeStyle='rgba(34,197,94,.4)';c.lineWidth=1;c.beginPath();c.moveTo(x,ch.chartArea.top);c.lineTo(x,ch.chartArea.bottom);c.stroke();c.fillStyle='rgba(34,197,94,.7)';c.fillText('Cut: #'+cashRankScatter,x+4,ch.chartArea.top+12);c.restore();}}]});
+  const cohortOrder = ['216+','180','144','108','72','0-71'];
+  const datasets = cohortOrder.filter(l => cohortBuckets[l]).map(l => ({
+    label: l + ' holes',
+    data: cohortBuckets[l].data,
+    backgroundColor: cohortBuckets[l].color + 'aa',
+    borderColor: cohortBuckets[l].color,
+    pointRadius: 3,
+    order: 5
+  }));
+  datasets.push({label:'This entry',data:sel,backgroundColor:'#ffffff',borderColor:'#1d4ed8',pointRadius:14,pointStyle:'triangle',borderWidth:2,order:1});
+  const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
+  const xMax = Math.max(...ENTRIES.map(e=>e.h))+10;
+  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:xMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}}}}});
   const ac = document.getElementById('sAnalysis');
   if (inCashByPower) ac.innerHTML = '<div class="callout callout-green"><b>Projected to cash.</b> Power Rank #' + pr + ' of ' + TOTAL + ' (top ' + Math.round(pr/TOTAL*100) + '%).</div>';
   else ac.innerHTML = '<div class="callout callout-red"><b>Projected below cutoff.</b> Power Rank #' + pr + ' — needs #' + cashRankForChart + ' or better to cash.</div>';
@@ -977,13 +1001,41 @@ function renderCompare() {
   }).join('');
   const ctx = document.getElementById('cmpScatter');
   if (cmpScatterChart) cmpScatterChart.destroy();
-  const field = ENTRIES.map(x => ({x: getPowerRank(x), y: x.p})).filter(p => p.x !== null);
-  const ds = [{label:'Field',data:field,backgroundColor:'rgba(255,255,255,.08)',borderColor:'rgba(255,255,255,.15)',pointRadius:1.5,order:10}];
-  cmpEntries.forEach((e,i) => { ds.push({label:e.n,data:[{x:getPowerRank(e),y:e.p}],backgroundColor:COLORS[i],borderColor:COLORS[i],pointRadius:10,pointStyle:'triangle',order:1}); });
-  const yMax = Math.max(Math.max(...ENTRIES.map(e=>e.p)),CASH)+20;
-  const xMax = ENTRIES.length+5;
-  const cashRankCmp = Math.round(ENTRIES.length * 0.45);
-  cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',usePointStyle:true,pointStyle:'triangle',font:{size:12}}}},scales:{x:{title:{display:true,text:'Power Rank',color:'#5c6478',font:{size:11}},min:1,max:xMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl2',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.8)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.right-80,y-6);c.restore();const x=ch.scales.x.getPixelForValue(cashRankCmp);c.save();c.setLineDash([4,4]);c.strokeStyle='rgba(34,197,94,.4)';c.lineWidth=1;c.beginPath();c.moveTo(x,ch.chartArea.top);c.lineTo(x,ch.chartArea.bottom);c.stroke();c.fillStyle='rgba(34,197,94,.7)';c.fillText('Cut: #'+cashRankCmp,x+4,ch.chartArea.top+12);c.restore();}}]});
+  const cohortColorC = h => {
+    if (h >= 216) return '#a855f7';
+    if (h >= 180) return '#3b82f6';
+    if (h >= 144) return '#22c55e';
+    if (h >= 108) return '#f97316';
+    if (h >= 72)  return '#eab308';
+    return '#ef4444';
+  };
+  const cohortLabelC = h => {
+    if (h >= 216) return '216+';
+    if (h >= 180) return '180';
+    if (h >= 144) return '144';
+    if (h >= 108) return '108';
+    if (h >= 72)  return '72';
+    return '0-71';
+  };
+  const cmpCohorts = {};
+  ENTRIES.forEach(x => {
+    const lbl = cohortLabelC(x.h);
+    if (!cmpCohorts[lbl]) cmpCohorts[lbl] = { color: cohortColorC(x.h), data: [] };
+    cmpCohorts[lbl].data.push({x:x.h, y:x.p});
+  });
+  const cohortOrderC = ['216+','180','144','108','72','0-71'];
+  const ds = cohortOrderC.filter(l => cmpCohorts[l]).map(l => ({
+    label: l + ' holes',
+    data: cmpCohorts[l].data,
+    backgroundColor: cmpCohorts[l].color + 'aa',
+    borderColor: cmpCohorts[l].color,
+    pointRadius: 3,
+    order: 10
+  }));
+  cmpEntries.forEach((e,i) => { ds.push({label:e.n,data:[{x:e.h,y:e.p}],backgroundColor:COLORS[i],borderColor:'#ffffff',borderWidth:2,pointRadius:14,pointStyle:'triangle',order:1}); });
+  const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
+  const xMax = Math.max(...ENTRIES.map(e=>e.h))+10;
+  cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:xMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}}}}});
   const ctx2 = document.getElementById('cmpOddsChart');
   if (cmpOddsChart) cmpOddsChart.destroy();
   const labels = cmpEntries.map(e=>e.n);
