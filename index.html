@@ -971,10 +971,11 @@ function renderSingle(entry) {
       });
     }
   });
-  const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
-  const xMax = Math.max(...ENTRIES.map(e=>e.h))+10;
-  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:0,max:xMax,reverse:true,ticks:{color:'#5c6478'},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl3',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.8)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.left+6,y-6);c.restore();}}]});
-  const ac = document.getElementById('sAnalysis');
+ const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
+  const xMaxRaw = Math.max(...ENTRIES.map(e=>e.h));
+  const xMax = xMaxRaw + Math.max(1, Math.round(xMaxRaw*0.1));
+  const xMin = Math.max(0, Math.min(...ENTRIES.map(e=>e.h)) - 1);
+  sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:xMin,max:xMax,reverse:true,ticks:{color:'#5c6478',stepSize:1},grid:{color:'#1a1f2a'}},  const ac = document.getElementById('sAnalysis');
   if (inCashByPower) ac.innerHTML = '<div class="callout callout-green"><b>Projected to cash.</b> Power Rank #' + pr + ' of ' + TOTAL + ' (top ' + Math.round(pr/TOTAL*100) + '%).</div>';
   else ac.innerHTML = '<div class="callout callout-red"><b>Projected below cutoff.</b> Power Rank #' + pr + ' — needs #' + cashRankForChart + ' or better to cash.</div>';
   const above = ENTRIES.filter(x => x.r < entry.r && x.l.length > 0);
