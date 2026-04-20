@@ -1,29 +1,4 @@
-
-
-<!-- We Love Stevie Dashboard v3.13 — 2026-04-10 --> <!DOCTYPE html> <html lang="en"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width,initial-scale=1.0"> <title>We Love Stevie — Live Position Dashboard</title> <link href="https://fonts.googleapis.com/css2?family=DM+Sa
-
-pasted
-
-"apply the two fixes from v3.13: (1) delete the duplicate computeCashLine after getPowerRank, (2) repair the broken sScatterChart Chart() call in renderSingle — it's missing the y-axis and has const ac = ... glued onto it. Output the complete file as an artifact."
-
-6:49 PM
-
-Identified two code fixes and prepared corrected file output
-Identified two code fixes and prepared corrected file output
-Both fixes applied. Duplicate computeCashLine removed; sScatterChart now has a complete y-axis + cash-line plugin (id cl4s to avoid collision with cmp chart's cl4), and const ac is on its own line.
-
-
-We love stevie v3.13
-Code · HTML 
-
-
-
-
-Claude is AI and can make mistakes. Please double-check responses.
-We love stevie v3.13 · HTML
-Copy
-
-<!-- We Love Stevie Dashboard v3.13 — 2026-04-10 -->
+<!-- We Love Stevie Dashboard v3.14 — 2026-04-19 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -35,7 +10,7 @@ Copy
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-:root{--bg:#0c0f14;--bg2:#141820;--bg3:#1a1f2a;--card:#171c26;--border:#2a3040;--border2:#3a4560;--t1:#ffffff;--t2:#ffffff;--t3:#ffffff;--green:#22c55e;--green-bg:rgba(34,197,94,.12);--green-t:#16a34a;--red:#ef4444;--red-bg:rgba(239,68,68,.12);--red-t:#f87171;--amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);--amber-t:#fbbf24;--blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);--blue-t:#60a5fa;--purple:#a855f7;--purple-bg:rgba(168,85,247,.12);--purple-t:#c084fc;--teal:#14b8a6;--teal-bg:rgba(20,184,166,.12);--teal-t:#5eead4;--r:8px;--r2:12px;--font:'DM Sans',system-ui,sans-serif;--mono:'JetBrains Mono',monospace}
+:root{--bg:#0c0f14;--bg2:#141820;--bg3:#1a1f2a;--card:#171c26;--border:#2a3040;--border2:#3a4560;--t1:#ffffff;--t2:#ffffff;--t3:#ffffff;--green:#22c55e;--green-bg:rgba(34,197,94,.12);--green-t:#16a34a;--red:#ef4444;--red-bg:rgba(239,68,68,.12);--red-t:#f87171;--amber:#f59e0b;--amber-bg:rgba(245,158,11,.12);--amber-t:#fbbf24;--orange:#ea580c;--orange-bg:rgba(234,88,12,.12);--orange-t:#fb923c;--blue:#3b82f6;--blue-bg:rgba(59,130,246,.12);--blue-t:#60a5fa;--purple:#a855f7;--purple-bg:rgba(168,85,247,.12);--purple-t:#c084fc;--teal:#14b8a6;--teal-bg:rgba(20,184,166,.12);--teal-t:#5eead4;--r:8px;--r2:12px;--font:'DM Sans',system-ui,sans-serif;--mono:'JetBrains Mono',monospace}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:var(--font);background:var(--bg);color:var(--t1);min-height:100vh;padding:20px;line-height:1.5;position:relative}
 body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;background:url('Stevie.png') center center/cover no-repeat;opacity:.90;pointer-events:none;z-index:0}
@@ -146,6 +121,19 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .modal-close{position:absolute;top:14px;right:14px;background:none;border:none;color:var(--t3);font-size:22px;cursor:pointer;line-height:1;padding:0}
 .modal-close:hover{color:var(--t1)}
 .modal-title{font-size:13px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.save-btn{background:var(--orange);color:#fff;font-size:12px;padding:7px 16px;font-weight:700;border:none;border-radius:var(--r);cursor:pointer;font-family:var(--font)}
+.save-btn:hover{opacity:.9}
+.save-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.save-field label{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+.save-field input,.save-field textarea{padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);color:var(--t1);font-size:14px;font-family:var(--font);outline:none;width:100%}
+.save-field input:focus,.save-field textarea:focus{border-color:var(--orange)}
+.save-field textarea{min-height:70px;resize:vertical;font-family:var(--font)}
+.save-field .hint{font-size:11px;color:var(--t3);font-weight:400;text-transform:none;letter-spacing:0}
+.save-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)}
+.save-actions .cancel{padding:9px 20px;background:var(--bg3);color:var(--t2);border:1px solid var(--border);border-radius:var(--r);font-size:13px;font-weight:500;cursor:pointer;font-family:var(--font)}
+.save-actions .confirm{padding:9px 22px;background:var(--orange);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)}
+.save-actions .confirm:hover{opacity:.9}
+.save-actions .confirm:disabled{opacity:.5;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -217,6 +205,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <button onclick="applyManualCash()">Override</button>
   <button onclick="clearCashOverride()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Auto</button>
   <span id="cashInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
+  <button onclick="openEndTournamentModal()" class="save-btn" title="Archive this tournament to a ZIP bundle then reset for the next one">End Tournament &amp; Save</button>
   <button onclick="hardReset()" style="background:var(--red);color:#fff;font-size:12px;padding:7px 16px;font-weight:700">HARD RESET</button>
 </div>
  
@@ -330,7 +319,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.13 (2026-04-10) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.14 (2026-04-19) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -342,15 +331,50 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
+<!-- END TOURNAMENT SAVE MODAL -->
+<div class="modal-overlay" id="endTournamentModal" onclick="if(event.target===this)closeEndTournamentModal()">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeEndTournamentModal()">&#x2715;</button>
+    <div class="modal-title" style="color:var(--orange-t)">End tournament &amp; save archive</div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.5;margin-bottom:18px">Package the current session into a ZIP archive containing the full leaderboard, session state, a rendered snapshot, and a README. After saving, the dashboard will reset so you can load the next tournament's CSV.</div>
+ 
+    <div class="save-field">
+      <label for="etTourneyName">Tournament name</label>
+      <input type="text" id="etTourneyName" placeholder="e.g. Valspar Championship 50/50">
+      <span class="hint">Used in the archive filename and README.</span>
+    </div>
+ 
+    <div class="save-field">
+      <label for="etEndDate">End date</label>
+      <input type="date" id="etEndDate">
+      <span class="hint">Defaults to today. Adjust for weather delays or Monday finishes.</span>
+    </div>
+ 
+    <div class="save-field">
+      <label for="etNotes">Notes (optional)</label>
+      <textarea id="etNotes" placeholder="Post-mortem observations, what worked, what did not, notable lineups, weather, anything worth capturing..."></textarea>
+    </div>
+ 
+    <div id="etPreview" style="font-size:12px;color:var(--t3);font-family:var(--mono);padding:10px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);margin-top:4px"></div>
+ 
+    <div class="save-actions">
+      <button class="cancel" onclick="closeEndTournamentModal()">Cancel</button>
+      <button class="confirm" id="etConfirmBtn" onclick="confirmEndTournament()">Save ZIP &amp; reset</button>
+    </div>
+  </div>
+</div>
+ 
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.13 — 2026-04-10';
+const VERSION = 'v3.14 — 2026-04-19';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
 let CASH_OVERRIDE = null;
 const CASH_CORR_KEY = 'weLoveStevieDashboard_cashCorr';
+ 
+let LIVE_LAST_PAYLOAD = null;
  
 function loadCashCorrections() {
   try { return JSON.parse(localStorage.getItem(CASH_CORR_KEY)) || []; } catch(e) { return []; }
@@ -1107,6 +1131,7 @@ async function fetchLive() {
     if (!resp.ok) throw new Error('HTTP '+resp.status);
     const data = await resp.json();
     if (data.error) throw new Error(data.error);
+    LIVE_LAST_PAYLOAD = data;
     renderLiveLeaderboard(data);
     let scoresUpdated = 0, oddsUpdated = 0;
     if (data.players) {
@@ -1281,6 +1306,298 @@ function renderScoreChart() {
   });
 }
  
+// ============================================================================
+// END TOURNAMENT & SAVE — ZIP bundle export + dashboard reset
+// ============================================================================
+ 
+function slugify(s) {
+  return (s || '').toString().trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'untitled';
+}
+ 
+function csvEscape(v) {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+ 
+function openEndTournamentModal() {
+  if (!ENTRIES.length) {
+    alert('No tournament data loaded. Upload a CSV before saving.');
+    return;
+  }
+  document.getElementById('etTourneyName').value = document.getElementById('tournamentInput').value.trim();
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  document.getElementById('etEndDate').value = yyyy + '-' + mm + '-' + dd;
+  document.getElementById('etNotes').value = '';
+  updateEndTournamentPreview();
+  document.getElementById('etTourneyName').oninput = updateEndTournamentPreview;
+  document.getElementById('etEndDate').onchange = updateEndTournamentPreview;
+  document.getElementById('etConfirmBtn').disabled = false;
+  document.getElementById('etConfirmBtn').textContent = 'Save ZIP & reset';
+  document.getElementById('endTournamentModal').classList.add('open');
+}
+ 
+function closeEndTournamentModal() {
+  document.getElementById('endTournamentModal').classList.remove('open');
+}
+ 
+function updateEndTournamentPreview() {
+  const name = document.getElementById('etTourneyName').value.trim();
+  const date = document.getElementById('etEndDate').value;
+  const slug = slugify(name);
+  const filename = 'WLS_' + slug + '_' + (date || 'YYYY-MM-DD') + '.zip';
+  document.getElementById('etPreview').textContent = 'Filename: ' + filename;
+}
+ 
+function buildLeaderboardCSV() {
+  const headers = ['Rank','EntryName','Points','HolesRemaining','PowerScore','PowerRank','CashProbPct','ProjectedCash','LineupPlayers','CutPlayers'];
+  const rows = [headers.join(',')];
+  const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  sorted.forEach(e => {
+    const ps = powerScore(e);
+    const pr = getPowerRank(e);
+    const prob = cashProb(e);
+    const inCash = pr !== null && pr <= cashRank ? 'YES' : 'NO';
+    const activePlayers = e.l.filter(p => !isPlayerCut(p));
+    const cutPlayers = e.l.filter(p => isPlayerCut(p));
+    rows.push([
+      e.r, e.n, e.p, e.h,
+      ps.toFixed(4),
+      pr !== null ? pr : '',
+      prob,
+      inCash,
+      activePlayers.join(' | '),
+      cutPlayers.join(' | ')
+    ].map(csvEscape).join(','));
+  });
+  return rows.join('\r\n') + '\r\n';
+}
+ 
+function buildTournamentJSON(meta) {
+  return JSON.stringify({
+    schema: 'we-love-stevie-archive/v1',
+    version: VERSION,
+    savedAt: new Date().toISOString(),
+    tournament: {
+      name: meta.name,
+      endDate: meta.endDate,
+      notes: meta.notes
+    },
+    session: {
+      uploadTime: lastUploadTime,
+      totalEntries: TOTAL,
+      cashLine: CASH,
+      cashOverride: CASH_OVERRIDE,
+      cashCorrections: loadCashCorrections()
+    },
+    data: {
+      entries: ENTRIES,
+      odds: ODDS,
+      frequency: FREQ,
+      playerScores: PLAYER_SCORES,
+      cutPlayers: Array.from(CUT_PLAYERS),
+      cutLine: CUT_LINE,
+      scoreHistory: SCORE_HISTORY
+    },
+    live: {
+      lastPayload: LIVE_LAST_PAYLOAD
+    },
+    ui: {
+      tournamentInput: document.getElementById('tournamentInput').value,
+      cutNamesInput: document.getElementById('cutNamesInput').value,
+      cashLineInput: document.getElementById('cashLineInput').value,
+      cutLineInput: document.getElementById('cutLineInput').value
+    }
+  }, null, 2);
+}
+ 
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+ 
+function buildSnapshotHTML(meta) {
+  const sortedByRank = [...ENTRIES].sort((a,b) => a.r - b.r);
+  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const rowsHtml = sortedByRank.map(e => {
+    const ps = powerScore(e);
+    const pr = getPowerRank(e);
+    const inCash = pr !== null && pr <= cashRank;
+    const active = e.l.filter(p => !isPlayerCut(p));
+    const cut = e.l.filter(p => isPlayerCut(p));
+    return '<tr class="' + (inCash ? 'cash' : 'miss') + '">' +
+      '<td>' + e.r + '</td>' +
+      '<td>' + escapeHtml(e.n) + '</td>' +
+      '<td class="num">' + e.p + '</td>' +
+      '<td class="num">' + e.h + '</td>' +
+      '<td class="num">' + ps.toFixed(4) + '</td>' +
+      '<td class="num">' + (pr !== null ? '#' + pr : '—') + '</td>' +
+      '<td>' + (inCash ? 'CASH' : 'MISS') + '</td>' +
+      '<td class="players">' + active.map(escapeHtml).join(', ') + (cut.length ? ' <span class="cut">(cut: ' + cut.map(escapeHtml).join(', ') + ')</span>' : '') + '</td>' +
+    '</tr>';
+  }).join('');
+  const cashCount = sortedByRank.filter(e => { const pr = getPowerRank(e); return pr !== null && pr <= cashRank; }).length;
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="UTF-8"><title>' + escapeHtml(meta.name) + ' — Final snapshot</title>' +
+    '<style>' +
+    'body{font-family:system-ui,sans-serif;background:#0c0f14;color:#fff;padding:24px;line-height:1.5;margin:0}' +
+    'h1{font-size:22px;margin:0 0 6px}' +
+    '.meta{color:#aab;font-size:13px;margin-bottom:18px}' +
+    '.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}' +
+    '.m{background:#171c26;border:1px solid #2a3040;border-radius:10px;padding:12px;text-align:center}' +
+    '.m .k{font-size:11px;color:#8a96a8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}' +
+    '.m .v{font-size:20px;font-weight:700;font-family:"JetBrains Mono",monospace}' +
+    'table{width:100%;border-collapse:collapse;background:#171c26;border:1px solid #2a3040;border-radius:10px;overflow:hidden;font-size:13px}' +
+    'th{text-align:left;padding:10px 12px;background:#1a1f2a;border-bottom:1px solid #2a3040;font-size:11px;color:#8a96a8;text-transform:uppercase;letter-spacing:.5px}' +
+    'td{padding:8px 12px;border-bottom:1px solid #222735}' +
+    'tr:last-child td{border-bottom:none}' +
+    'tr.cash td{background:rgba(34,197,94,.06)}' +
+    'tr.miss td{background:rgba(239,68,68,.04)}' +
+    '.num{font-family:"JetBrains Mono",monospace;text-align:right}' +
+    '.players{color:#ccd;font-size:12px}' +
+    '.cut{color:#888;font-style:italic}' +
+    '.notes{background:#171c26;border:1px solid #2a3040;border-radius:10px;padding:14px 16px;margin-bottom:18px;white-space:pre-wrap;font-size:13px}' +
+    '.footer{margin-top:24px;color:#6a7586;font-size:11px;text-align:center}' +
+    '</style></head><body>' +
+    '<h1>' + escapeHtml(meta.name || 'Tournament') + ' — Final snapshot</h1>' +
+    '<div class="meta">End date: ' + escapeHtml(meta.endDate) + ' &middot; Saved: ' + new Date().toLocaleString() + ' &middot; ' + VERSION + '</div>' +
+    (meta.notes ? '<div class="notes"><b>Notes</b><br>' + escapeHtml(meta.notes) + '</div>' : '') +
+    '<div class="summary">' +
+      '<div class="m"><div class="k">Entries</div><div class="v">' + TOTAL + '</div></div>' +
+      '<div class="m"><div class="k">Cash line</div><div class="v">' + CASH + '</div></div>' +
+      '<div class="m"><div class="k">Projected cash</div><div class="v">' + cashCount + '</div></div>' +
+      '<div class="m"><div class="k">Cut players</div><div class="v">' + CUT_PLAYERS.size + '</div></div>' +
+    '</div>' +
+    '<table><thead><tr><th>Rank</th><th>Entry</th><th>Points</th><th>Holes</th><th>Power</th><th>PRank</th><th>Proj</th><th>Lineup</th></tr></thead>' +
+    '<tbody>' + rowsHtml + '</tbody></table>' +
+    '<div class="footer">Offline snapshot generated by We Love Stevie Dashboard ' + VERSION + '</div>' +
+    '</body></html>';
+}
+ 
+function buildReadme(meta) {
+  const lines = [];
+  lines.push('# ' + meta.name);
+  lines.push('');
+  lines.push('**End date:** ' + meta.endDate);
+  lines.push('**Saved:** ' + new Date().toISOString());
+  lines.push('**Dashboard version:** ' + VERSION);
+  lines.push('');
+  lines.push('## Summary');
+  lines.push('');
+  lines.push('- Total entries: ' + TOTAL);
+  lines.push('- Cash line: ' + CASH + (CASH_OVERRIDE !== null ? ' (manual override)' : ' (auto)'));
+  lines.push('- Cut players: ' + CUT_PLAYERS.size);
+  lines.push('- Score history snapshots: ' + SCORE_HISTORY.length);
+  lines.push('');
+  lines.push('## Files in this archive');
+  lines.push('');
+  lines.push('- `tournament.json` — full session state (entries, odds, frequency, cuts, score history, cash corrections, live payload, UI state). Schema: `we-love-stevie-archive/v1`.');
+  lines.push('- `leaderboard.csv` — flat table of the final leaderboard with Power Score, Power Rank, and cash projection per entry.');
+  lines.push('- `snapshot.html` — self-contained offline view of the final standings. Open in any browser.');
+  lines.push('- `README.md` — this file.');
+  lines.push('');
+  if (meta.notes && meta.notes.trim()) {
+    lines.push('## Notes');
+    lines.push('');
+    lines.push(meta.notes.trim());
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+ 
+async function confirmEndTournament() {
+  const btn = document.getElementById('etConfirmBtn');
+  btn.disabled = true;
+  btn.textContent = 'Building ZIP...';
+  try {
+    if (typeof JSZip === 'undefined') throw new Error('JSZip library not loaded');
+    const name = document.getElementById('etTourneyName').value.trim() || 'Untitled tournament';
+    const endDate = document.getElementById('etEndDate').value || new Date().toISOString().slice(0,10);
+    const notes = document.getElementById('etNotes').value;
+    const meta = { name, endDate, notes };
+ 
+    const zip = new JSZip();
+    zip.file('tournament.json', buildTournamentJSON(meta));
+    zip.file('leaderboard.csv', buildLeaderboardCSV());
+    zip.file('snapshot.html', buildSnapshotHTML(meta));
+    zip.file('README.md', buildReadme(meta));
+ 
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+    const filename = 'WLS_' + slugify(name) + '_' + endDate + '.zip';
+ 
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 200);
+ 
+    closeEndTournamentModal();
+    resetForNextTournament();
+    showStatus('Saved ' + filename + ' and reset dashboard for next tournament.', true);
+  } catch(err) {
+    alert('Save failed: ' + err.message);
+    btn.disabled = false;
+    btn.textContent = 'Save ZIP & reset';
+  }
+}
+ 
+function resetForNextTournament() {
+  if (isLive) stopLive();
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(HIST_KEY);
+  } catch(e) {}
+  ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
+  CUT_PLAYERS = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
+  POWER_CACHE = null; CASH_OVERRIDE = null; CASH = 0;
+  SCORE_HISTORY = [];
+  LIVE_LAST_PAYLOAD = null;
+  lastUploadTime = null;
+  currentSingleEntry = null;
+  cmpEntries = [];
+ 
+  document.getElementById('tournamentInput').value = '';
+  document.getElementById('cashLineInput').value = '';
+  document.getElementById('cutLineInput').value = '';
+  document.getElementById('cutNamesInput').value = '';
+  document.getElementById('searchSingle').value = '';
+  document.getElementById('searchCompare').value = '';
+  document.getElementById('headerSub').textContent = 'DraftKings';
+  document.getElementById('dataBadge').textContent = 'NO DATA';
+  document.getElementById('dataBadge').style.background = 'var(--blue-bg)';
+  document.getElementById('dataBadge').style.color = 'var(--blue-t)';
+  document.getElementById('timestamp').textContent = 'Upload CSV to begin';
+  document.getElementById('cashInfo').innerHTML = '';
+  document.getElementById('cutStatus').textContent = '';
+  document.getElementById('singleDash').classList.add('hidden');
+  document.getElementById('singleEmpty').classList.remove('hidden');
+  document.getElementById('singleEmpty').innerHTML = '<div style="font-size:44px;margin-bottom:14px">&#9971;</div><div style="font-size:15px;margin-bottom:6px">Upload a CSV to begin</div><div style="font-size:13px">Then search for any entry to see full analysis</div>';
+  document.getElementById('cmpDash').classList.add('hidden');
+  document.getElementById('cmpChips').innerHTML = '<div style="font-size:12px;color:#ffffff;padding:8px 0">Select up to 3 entries to compare.</div>';
+  document.getElementById('fieldDistHead').innerHTML = '';
+  document.getElementById('fieldDistBody').innerHTML = '';
+  if (sCompChart) { sCompChart.destroy(); sCompChart = null; }
+  if (sScatterChart) { sScatterChart.destroy(); sScatterChart = null; }
+  if (cmpScatterChart) { cmpScatterChart.destroy(); cmpScatterChart = null; }
+  if (cmpOddsChart) { cmpOddsChart.destroy(); cmpOddsChart = null; }
+  if (scoreChart) { scoreChart.destroy(); scoreChart = null; }
+  updateScoreHistoryInfo();
+}
+ 
+// ============================================================================
+// INIT
+// ============================================================================
+ 
 (function init() {
   const now = new Date();
   const monday = new Date(now);
@@ -1314,4 +1631,3 @@ function renderScoreChart() {
 </script>
 </body>
 </html>
- 
