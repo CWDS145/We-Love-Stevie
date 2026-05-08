@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.16 — 2026-05-08 -->
+<!-- We Love Stevie Dashboard v3.17 — 2026-05-08 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -319,7 +319,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.16 (2026-05-08) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.17 (2026-05-08) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -750,10 +750,12 @@ const CHIP_CLS = ['chip-1','chip-2','chip-3'];
  
 function getOdds(e) {
   const a = [], c = [];
+  const oddsVals = Object.values(ODDS).filter(v => typeof v === 'number' && v > 0);
+  const fallbackOdds = oddsVals.length ? Math.max(...oddsVals) : null;
   e.l.forEach(p => {
     if (isPlayerCut(p)) { c.push({ name:p, freq:FREQ[p]||0 }); }
     else if (ODDS[p] !== undefined) { a.push({ name:p, odds:ODDS[p], freq:FREQ[p]||0 }); }
-    else { a.push({ name:p, odds:null, freq:FREQ[p]||0 }); }
+    else { a.push({ name:p, odds:fallbackOdds, freq:FREQ[p]||0 }); }
   });
   const w = a.filter(x => x.odds !== null);
   return { active:a, cut:c, avg: w.length ? w.reduce((s,x)=>s+x.odds,0)/w.length : null, n:w.length };
@@ -963,12 +965,12 @@ function renderCompare() {
   chips.innerHTML = cmpEntries.map((e,i) => '<div class="chip '+CHIP_CLS[i]+'">'+e.n+' <span class="x" onclick="removeCompare('+i+')">&times;</span></div>').join('');
   if (cmpEntries.length < 2) { document.getElementById('cmpDash').classList.add('hidden'); return; }
   document.getElementById('cmpDash').classList.remove('hidden');
-  const Hmax = Math.max(0, ...ENTRIES.map(x => x.h));
+  const HTOTAL = Math.max(432, ...ENTRIES.map(x => x.h));
   const projPts = e => {
-    if (Hmax <= 0) return e.p;
-    const played = Hmax - e.h;
-    const frac = played / Hmax;
-    if (frac < 0.20) return null;
+    if (HTOTAL <= 0 || e.h >= HTOTAL) return e.p;
+    const played = HTOTAL - e.h;
+    const frac = played / HTOTAL;
+    if (frac < 0.05) return null;
     return Math.min(800, Math.round((e.p / frac) * 10) / 10);
   };
   const data = cmpEntries.map(e => ({entry:e, odds:getOdds(e), prob:cashProb(e), gap:CASH-e.p, ps:powerScore(e), pr:getPowerRank(e), proj: projPts(e)}));
