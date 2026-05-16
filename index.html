@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.18 — 2026-05-08 -->
+<!-- We Love Stevie Dashboard v3.19 — 2026-05-16 — auto-cut from PGA Tour status -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -180,7 +180,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
       <tbody id="liveBody"></tbody>
     </table>
   </div>
-  <div style="font-size:11px;color:#ffffff;margin-top:8px">Fetches live scores + betting odds directly from pgatour.com via Vercel proxy. Odds auto-replace CSV odds on every refresh.</div>
+  <div style="font-size:11px;color:#ffffff;margin-top:8px">Fetches live scores + betting odds directly from pgatour.com via Vercel proxy. Odds auto-replace CSV odds on every refresh. Players marked CUT/WD by PGA Tour are auto-applied to lineups.</div>
 </div>
  
 <!-- SCORE HISTORY CHART -->
@@ -319,7 +319,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.18 (2026-05-08) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.19 (2026-05-16) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -367,7 +367,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.14 — 2026-04-19';
+const VERSION = 'v3.19 — 2026-05-16';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -477,6 +477,8 @@ function getPowerRank(e) {
 }
  
 let CUT_PLAYERS = new Set();
+let CUT_MANUAL = new Set();
+let CUT_LIVE = new Set();
 let CUT_LINE = null;
 let PLAYER_SCORES = {};
 let fieldCashAvg = 0, fieldNonCashAvg = 0, lastUploadTime = null;
@@ -487,21 +489,48 @@ function normalizePlayerName(s) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim().replace(/\s+/g,' ');
 }
  
+function recomputeCutPlayers() {
+  CUT_PLAYERS = new Set([...CUT_MANUAL, ...CUT_LIVE]);
+  POWER_CACHE = null;
+  updateCutStatus();
+}
+ 
+function addLiveCutByName(liveName) {
+  if (!liveName) return false;
+  const liveNorm = normalizePlayerName(liveName);
+  if (!liveNorm) return false;
+  const allLineupNames = new Set();
+  ENTRIES.forEach(e => e.l.forEach(p => allLineupNames.add(p)));
+  let matched = false;
+  allLineupNames.forEach(lineupName => {
+    if (normalizePlayerName(lineupName) === liveNorm) { CUT_LIVE.add(lineupName); matched = true; }
+  });
+  if (matched) return true;
+  const liveLast = liveNorm.split(' ').pop();
+  if (!liveLast) return false;
+  const surnameMatches = [];
+  allLineupNames.forEach(lineupName => {
+    const lastN = normalizePlayerName(lineupName).split(' ').pop();
+    if (lastN === liveLast) surnameMatches.push(lineupName);
+  });
+  if (surnameMatches.length === 1) { CUT_LIVE.add(surnameMatches[0]); return true; }
+  return false;
+}
+ 
 function applyScoreCuts() {
   if (CUT_LINE === null) return;
-  POWER_CACHE = null;
   ENTRIES.forEach(e => {
     e.l.forEach(lineupName => {
       const lineupNorm = normalizePlayerName(lineupName);
       for (const [liveName, score] of Object.entries(PLAYER_SCORES)) {
         if (normalizePlayerName(liveName) === lineupNorm && score > CUT_LINE) {
-          CUT_PLAYERS.add(lineupName);
+          CUT_LIVE.add(lineupName);
           break;
         }
       }
     });
   });
-  updateCutStatus();
+  recomputeCutPlayers();
 }
  
 function updateCutLine() {
@@ -519,15 +548,15 @@ function applyNameCuts() {
   const allNames = new Set();
   ENTRIES.forEach(e => e.l.forEach(p => allNames.add(p)));
   fragments.forEach(frag => {
-    allNames.forEach(p => { if (p.toLowerCase().includes(frag)) CUT_PLAYERS.add(p); });
+    allNames.forEach(p => { if (p.toLowerCase().includes(frag)) CUT_MANUAL.add(p); });
   });
-  POWER_CACHE = null;
-  updateCutStatus(); refreshViews(); saveToStorage();
+  recomputeCutPlayers();
+  refreshViews(); saveToStorage();
   showStatus('Marked ' + CUT_PLAYERS.size + ' player(s) cut.', true);
 }
  
 function clearAllCuts() {
-  CUT_PLAYERS.clear(); CUT_LINE = null;
+  CUT_PLAYERS.clear(); CUT_MANUAL.clear(); CUT_LIVE.clear(); CUT_LINE = null;
   POWER_CACHE = null;
   document.getElementById('cutLineInput').value = '';
   document.getElementById('cutNamesInput').value = '';
@@ -536,7 +565,12 @@ function clearAllCuts() {
  
 function updateCutStatus() {
   const el = document.getElementById('cutStatus');
-  if (el) el.textContent = CUT_PLAYERS.size > 0 ? CUT_PLAYERS.size + ' cut' : '';
+  if (!el) return;
+  if (CUT_PLAYERS.size === 0) { el.textContent = ''; return; }
+  const parts = [];
+  if (CUT_LIVE.size > 0) parts.push(CUT_LIVE.size + ' live');
+  if (CUT_MANUAL.size > 0) parts.push(CUT_MANUAL.size + ' manual');
+  el.textContent = CUT_PLAYERS.size + ' cut (' + parts.join(' + ') + ')';
 }
  
 function isPlayerCut(p) { return CUT_PLAYERS.has(p); }
@@ -548,7 +582,8 @@ function saveToStorage() {
       total: TOTAL, cashOverride: CASH_OVERRIDE,
       uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
-      cutNamesInput: document.getElementById('cutNamesInput').value
+      cutNamesInput: document.getElementById('cutNamesInput').value,
+      cutManual: Array.from(CUT_MANUAL)
     }));
   } catch(e) {}
 }
@@ -575,8 +610,11 @@ function loadData(d, fromStorage = false) {
   if (CASH_OVERRIDE !== null) document.getElementById('cashLineInput').value = CASH_OVERRIDE;
   computeCashLine();
   CUT_PLAYERS = new Set();
+  CUT_MANUAL = new Set(d.cutManual || []);
+  CUT_LIVE = new Set();
   CUT_LINE = null;
   PLAYER_SCORES = {};
+  recomputeCutPlayers();
   if (d.uploadTime) lastUploadTime = d.uploadTime;
   if (d.tournament) document.getElementById('tournamentInput').value = d.tournament;
   if (d.cutNamesInput) document.getElementById('cutNamesInput').value = d.cutNamesInput;
@@ -719,6 +757,8 @@ function handleFile(file) {
       } catch(e) {}
       ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
       CUT_PLAYERS = new Set();
+      CUT_MANUAL = new Set();
+      CUT_LIVE = new Set();
       CUT_LINE = null;
       PLAYER_SCORES = {};
       POWER_CACHE = null;
@@ -1170,19 +1210,27 @@ async function fetchLive() {
         const score = parseInt(p.total);
         if (!isNaN(score)) { PLAYER_SCORES[p.name] = score; scoresUpdated++; }
       });
+      const cutsBeforeKey = [...CUT_PLAYERS].sort().join('|');
+      CUT_LIVE = new Set();
+      data.players.forEach(p => {
+        if (p.status === 'CUT' || p.status === 'WD' || p.status === 'WITHDRAWN') {
+          addLiveCutByName(p.name);
+        }
+      });
       if (CUT_LINE !== null) {
         ENTRIES.forEach(e => {
           e.l.forEach(lineupName => {
             const lineupNorm = normalizePlayerName(lineupName);
             for (const [liveName, score] of Object.entries(PLAYER_SCORES)) {
               if (normalizePlayerName(liveName) === lineupNorm && score > CUT_LINE) {
-                CUT_PLAYERS.add(lineupName); break;
+                CUT_LIVE.add(lineupName); break;
               }
             }
           });
         });
-        updateCutStatus();
       }
+      recomputeCutPlayers();
+      const cutsChanged = cutsBeforeKey !== [...CUT_PLAYERS].sort().join('|');
       const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       const oddsKeyMap = {};
       Object.keys(ODDS).forEach(k => { oddsKeyMap[norm(k)] = k; });
@@ -1194,7 +1242,7 @@ async function fetchLive() {
           oddsUpdated++;
         }
       });
-      if (oddsUpdated > 0 || scoresUpdated > 0) {
+      if (oddsUpdated > 0 || scoresUpdated > 0 || cutsChanged) {
         POWER_CACHE = null;
         computeCashLine();
         recomputeFieldAvgs(); renderFieldTable();
@@ -1434,6 +1482,8 @@ function buildTournamentJSON(meta) {
       frequency: FREQ,
       playerScores: PLAYER_SCORES,
       cutPlayers: Array.from(CUT_PLAYERS),
+      cutManual: Array.from(CUT_MANUAL),
+      cutLive: Array.from(CUT_LIVE),
       cutLine: CUT_LINE,
       scoreHistory: SCORE_HISTORY
     },
@@ -1522,7 +1572,7 @@ function buildReadme(meta) {
   lines.push('');
   lines.push('- Total entries: ' + TOTAL);
   lines.push('- Cash line: ' + CASH + (CASH_OVERRIDE !== null ? ' (manual override)' : ' (auto)'));
-  lines.push('- Cut players: ' + CUT_PLAYERS.size);
+  lines.push('- Cut players: ' + CUT_PLAYERS.size + ' (' + CUT_LIVE.size + ' from live, ' + CUT_MANUAL.size + ' manual)');
   lines.push('- Score history snapshots: ' + SCORE_HISTORY.length);
   lines.push('');
   lines.push('## Files in this archive');
@@ -1589,7 +1639,7 @@ function resetForNextTournament() {
     localStorage.removeItem(HIST_KEY);
   } catch(e) {}
   ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
-  CUT_PLAYERS = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
+  CUT_PLAYERS = new Set(); CUT_MANUAL = new Set(); CUT_LIVE = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
   POWER_CACHE = null; CASH_OVERRIDE = null; CASH = 0;
   SCORE_HISTORY = [];
   LIVE_LAST_PAYLOAD = null;
@@ -1652,7 +1702,7 @@ function resetForNextTournament() {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(HIST_KEY);
       ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
-      CUT_PLAYERS = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
+      CUT_PLAYERS = new Set(); CUT_MANUAL = new Set(); CUT_LIVE = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
       SCORE_HISTORY = [];
     }
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
