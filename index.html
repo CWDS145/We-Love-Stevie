@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.19 — 2026-05-16 — auto-cut from PGA Tour status -->
+<!-- We Love Stevie Dashboard v3.20 — 2026-05-16 — auto-cut from PGA Tour position field -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -319,7 +319,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.19 (2026-05-16) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.20 (2026-05-16) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -367,7 +367,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.19 — 2026-05-16';
+const VERSION = 'v3.20 — 2026-05-16';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -1213,7 +1213,10 @@ async function fetchLive() {
       const cutsBeforeKey = [...CUT_PLAYERS].sort().join('|');
       CUT_LIVE = new Set();
       data.players.forEach(p => {
-        if (p.status === 'CUT' || p.status === 'WD' || p.status === 'WITHDRAWN') {
+        const pos = (p.position || '').toUpperCase();
+        const st  = (p.status   || '').toUpperCase();
+        if (pos === 'CUT' || pos === 'MC' || pos === 'WD' || pos === 'MDF' ||
+            st === 'CUT' || st === 'WD' || st === 'WITHDRAWN') {
           addLiveCutByName(p.name);
         }
       });
@@ -1268,7 +1271,9 @@ async function fetchLive() {
 function renderLiveLeaderboard(data) {
   const tbody = document.getElementById('liveBody');
   tbody.innerHTML = data.players.slice(0,80).map(p => {
-    const isCut = p.status==='CUT'||p.status==='WITHDRAWN'||p.status==='WD';
+    const pos = (p.position||'').toUpperCase();
+    const st  = (p.status||'').toUpperCase();
+    const isCut = pos==='CUT'||pos==='MC'||pos==='WD'||pos==='MDF'||st==='CUT'||st==='WITHDRAWN'||st==='WD';
     const statusColor = isCut?'var(--t3)':p.status==='COMPLETE'?'var(--blue)':'var(--green)';
     const statusLabel = isCut?'CUT':p.status==='COMPLETE'?'F':'&#9679;';
     const totalVal = parseInt(p.total)||0;
