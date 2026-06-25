@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.20 — 2026-05-16 — auto-cut from PGA Tour position field -->
+<!-- We Love Stevie Dashboard v3.21 — 2026-06-25 — round-completion bar atop live cut-detection base -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -195,7 +195,17 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   <div style="position:relative;height:260px"><canvas id="scoreHistoryChart"></canvas></div>
   <div style="font-size:11px;color:var(--t3);margin-top:6px">Updated on each CSV upload. Resets every Sunday.</div>
 </div>
- 
+
+<!-- ROUND COMPLETION CHART (v3.21) -->
+<div class="card" style="margin-bottom:16px" id="roundCompleteCard">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:13px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Round completion — DM / SC / Mok / PI</div>
+    <span id="roundCompleteInfo" style="font-size:11px;color:var(--t3)"></span>
+  </div>
+  <div style="position:relative;height:150px"><canvas id="roundCompleteChart"></canvas></div>
+  <div style="font-size:11px;color:var(--t3);margin-top:6px">% of current round complete (avg holes thru ÷ 18 across each entry’s golfers). Needs live data.</div>
+</div>
+
 <div class="config-row">
   <label>Tournament</label>
   <input type="text" id="tournamentInput" value="" placeholder="e.g. Valspar 50/50" style="width:200px">
@@ -319,7 +329,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.20 (2026-05-16) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.21 (2026-06-25) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -367,7 +377,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.20 — 2026-05-16';
+const VERSION = 'v3.21 — 2026-06-25';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -1204,6 +1214,7 @@ async function fetchLive() {
     if (data.error) throw new Error(data.error);
     LIVE_LAST_PAYLOAD = data;
     renderLiveLeaderboard(data);
+    renderRoundComplete();
     let scoresUpdated = 0, oddsUpdated = 0;
     if (data.players) {
       data.players.forEach(p => {
@@ -1293,6 +1304,32 @@ const TRACKED_NAMES  = ['DrinkMilk','SevereChafing','moklovin','PeshtigoIndians'
 const TRACKED_COLORS = ['#3b82f6','#a855f7','#14b8a6','#f59e0b'];
 const HIST_KEY = 'weLoveStevieDashboard_history';
 let SCORE_HISTORY = [];
+
+/* ===== Round-completion bar (v3.21) — % of current round complete per tracked entry ===== */
+let roundCompleteChart = null;
+function parseThru(t){ if(t==null) return 0; const u=String(t).trim().toUpperCase(); if(u==='F'||u==='F*') return 18; const n=parseInt(u); return isNaN(n)?0:Math.min(Math.max(n,0),18); }
+function renderRoundComplete(){
+  const canvas=document.getElementById('roundCompleteChart'); if(!canvas) return;
+  const info=document.getElementById('roundCompleteInfo');
+  const live=(LIVE_LAST_PAYLOAD&&LIVE_LAST_PAYLOAD.players)?LIVE_LAST_PAYLOAD.players:[];
+  const thruByName={}; live.forEach(p=>{ thruByName[normalizePlayerName(p.name)]=parseThru(p.thru); });
+  const SHORT={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
+  const labels=[],vals=[],colors=[];
+  TRACKED_NAMES.forEach((nm,i)=>{
+    const e=ENTRIES.find(x=>x.n&&x.n.toLowerCase().includes(nm.toLowerCase()));
+    if(!e||!e.l||!e.l.length) return;
+    let sum=0,cnt=0; e.l.forEach(pl=>{ const k=normalizePlayerName(pl); if(k in thruByName) sum+=thruByName[k]; cnt++; });
+    labels.push(SHORT[nm]||nm); vals.push(cnt?Math.round(sum/(cnt*18)*100):0); colors.push(TRACKED_COLORS[i]);
+  });
+  if(!labels.length){ if(info) info.textContent='No live data'; if(roundCompleteChart){roundCompleteChart.destroy();roundCompleteChart=null;} return; }
+  if(info) info.textContent='live';
+  if(roundCompleteChart){ roundCompleteChart.data.labels=labels; roundCompleteChart.data.datasets[0].data=vals; roundCompleteChart.data.datasets[0].backgroundColor=colors; roundCompleteChart.update(); return; }
+  roundCompleteChart=new Chart(canvas,{type:'bar',data:{labels,datasets:[{data:vals,backgroundColor:colors,borderRadius:6,barPercentage:.6}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+'% round complete'}},title:{display:true,text:'% current round complete',color:'#9ca3b4',font:{size:11,weight:'500'}}},
+      scales:{y:{beginAtZero:true,max:100,ticks:{color:'#5c6478',callback:v=>v+'%'},grid:{color:'#2a3040'}},x:{ticks:{color:'#e8eaf0',font:{size:12}},grid:{display:false}}}}});
+}
+
 let scoreChart = null;
  
 function getSundayStart() {
