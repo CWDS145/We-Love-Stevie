@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.22 — 2026-06-28 — field-scatter cleanup + floating cashers box + per-entry round-completion table -->
+<!-- We Love Stevie Dashboard v3.23 — 2026-06-28 — DataGolf forecast + Odds/DG toggle + confidence meter -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,7 +329,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.22 (2026-06-28) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.23 (2026-06-28) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -377,7 +377,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.22 — 2026-06-28';
+const VERSION = 'v3.23 — 2026-06-28';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -1752,114 +1752,87 @@ function resetForNextTournament() {
   startLive();
 })();
 </script>
+
 <script>
-/* We-Love-Stevie enhancements — additive, self-healing. Inserted before </body>. */
+/* We-Love-Stevie — enhancements + Odds/DG toggle + confidence meter. Additive, self-healing. */
 (function(){
   var SHORT={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
   function cashRankVal(){return ENTRIES.filter(function(e){return e.l&&e.l.length&&e.p>=CASH;}).length;}
-  function findEntry(name){
-    return ENTRIES.find(function(x){return x.n===name;})
-      ||ENTRIES.find(function(x){return x.n&&x.n.toLowerCase().indexOf(name.toLowerCase())>=0;});
-  }
-  function emptyCoordSet(){
-    var m={};
-    (ENTRIES||[]).forEach(function(e){ if(e&&(!e.l||!e.l.length))m[e.h+'|'+e.p]=1; });
-    return m;
+  function nm(s){if(s==null)return'';s=String(s);if(s.indexOf(',')>-1){var a=s.split(',');s=a[1].trim()+' '+a[0].trim();}return (typeof normalizePlayerName==='function')?normalizePlayerName(s):s.toLowerCase().trim();}
+
+  window.FORECAST_MODE=(function(){try{return localStorage.getItem('forecastMode')||'dg';}catch(e){return 'dg';}})();
+
+  /* ---------- DataGolf forecast ---------- */
+  var DG_METRIC='top_20';            /* win | top_5 | top_10 | top_20 | make_cut */
+  var DG_KEY='YOUR_DATAGOLF_KEY';
+  var DG_PROXY=(typeof VERCEL_URL!=='undefined'?VERCEL_URL:'')+'/api/datagolf';
+  var DG_DIRECT='https://feeds.datagolf.com/preds/in-play?tour=pga&dead_heat=no&odds_format=percent&file_format=json&key='+DG_KEY;
+  window.DGPROB=window.DGPROB||{};
+  function pctv(v){if(v==null||isNaN(v))return null;v=+v;return v>1?v/100:v;}
+  function ingest(json){try{var arr=Array.isArray(json)?json:(json.data||json.players||json.predictions||[]);if(!Array.isArray(arr))return false;var map={},hit=0;arr.forEach(function(p){var name=p.player_name||p.name||p.player||'';var prob=pctv(p[DG_METRIC]);if(name&&prob!=null){map[nm(name)]=prob;hit++;}});if(hit>0){window.DGPROB=map;if(typeof POWER_CACHE!=='undefined')POWER_CACHE=null;return true;}}catch(e){}return false;}
+  function refreshDG(){fetch(DG_PROXY).then(function(r){return r.ok?r.json():Promise.reject();}).then(ingest).catch(function(){if(DG_KEY&&DG_KEY!=='YOUR_DATAGOLF_KEY'){fetch(DG_DIRECT).then(function(r){return r.json();}).then(ingest).catch(function(){});}}).finally(recompute);}
+
+  function dgCoverage(){var seen={},total=0,matched=0;TRACKED_NAMES.forEach(function(name){var e=ENTRIES.find(function(x){return x.n===name;});if(!e||!e.l)return;e.l.forEach(function(p){if(typeof isPlayerCut==='function'&&isPlayerCut(p))return;var k=nm(p);if(!k||seen[k])return;seen[k]=1;total++;if(window.DGPROB[k]!=null)matched++;});});return {matched:matched,total:total,pct:total?matched/total:0};}
+
+  function recompute(){try{if(typeof POWER_CACHE!=='undefined')POWER_CACHE=null;if(typeof computePowerRanks==='function')computePowerRanks();if(typeof refreshViews==='function')refreshViews();}catch(e){}try{renderFloatBox();renderReadout();renderToggle();tag();}catch(e){}}
+
+  if(typeof powerScore==='function'){
+    window.powerScore=function(e){var dgMode=(window.FORECAST_MODE==='dg');var score=0;e.l.forEach(function(p){if(typeof isPlayerCut==='function'&&isPlayerCut(p))return;var dg=dgMode?window.DGPROB[nm(p)]:null;if(dg!=null){score+=dg;}else if(typeof ODDS!=='undefined'&&ODDS[p]!=null&&ODDS[p]>0){score+=1/ODDS[p];}});return Math.round(score*10000)/10000;};
+    if(typeof POWER_CACHE!=='undefined')POWER_CACHE=null;
   }
 
-  /* 1+2: field scatter plugin (sScatter + cmpScatter) */
+  /* ---------- toggle + confidence meter ---------- */
+  function renderToggle(){
+    var t=document.getElementById('forecastToggle');
+    if(!t){t=document.createElement('div');t.id='forecastToggle';t.style.cssText='position:fixed;right:14px;top:14px;z-index:10000;display:flex;flex-direction:column;gap:5px;background:rgba(17,24,39,.92);border:1px solid #374151;border-radius:12px;padding:7px 9px;font:600 11px/1 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.4);min-width:150px;';document.body.appendChild(t);}
+    function btn(mode,label){var on=window.FORECAST_MODE===mode;return '<button data-mode="'+mode+'" style="cursor:pointer;border:0;border-radius:999px;padding:5px 11px;font:inherit;color:'+(on?'#0b1220':'#9ca3af')+';background:'+(on?'#34d399':'transparent')+';">'+label+'</button>';}
+    var cov=dgCoverage();var p=Math.round(cov.pct*100);var col=cov.pct>=0.8?'#34d399':cov.pct>=0.5?'#fbbf24':'#f87171';
+    var meter='<div style="opacity:'+(window.FORECAST_MODE==='dg'?1:0.45)+';"><div style="display:flex;justify-content:space-between;color:#9ca3af;font-size:10px;margin-bottom:3px;"><span>DG coverage</span><span style="color:'+col+';">'+cov.matched+'/'+cov.total+' ('+p+'%)</span></div><div style="height:5px;border-radius:3px;background:#374151;overflow:hidden;"><div style="height:100%;width:'+p+'%;background:'+col+';"></div></div></div>';
+    t.innerHTML='<div style="display:flex;align-items:center;gap:6px;"><span style="color:#6b7280;padding-left:2px;">Forecast</span>'+btn('odds','Odds')+btn('dg','DG')+'</div>'+meter;
+    Array.prototype.forEach.call(t.querySelectorAll('button'),function(b){b.onclick=function(){window.FORECAST_MODE=b.getAttribute('data-mode');try{localStorage.setItem('forecastMode',window.FORECAST_MODE);}catch(e){}tag();recompute();};});
+  }
+
+  /* ---------- field scatter plugin ---------- */
   function registerScatterPlugin(){
     if(!window.Chart||!Chart.register)return;
-    try{ if(Chart.registry.plugins.get('fieldPosEnhance'))return; }catch(e){}
+    try{if(Chart.registry.plugins.get('fieldPosEnhance'))return;}catch(e){}
     Chart.register({
       id:'fieldPosEnhance',
-      beforeUpdate:function(c){
-        if(!/^(sScatter|cmpScatter)$/.test(c.canvas&&c.canvas.id))return;
-        try{
-          var s=c.options.scales||{};
-          ['x','y'].forEach(function(a){ if(s[a]){delete s[a].min;delete s[a].max;} });
-          var empties=emptyCoordSet();
-          (c.data.datasets||[]).forEach(function(ds){
-            if(/hole/i.test(ds.label||'')&&Array.isArray(ds.data)){
-              ds.data=ds.data.filter(function(pt){return pt&&!empties[pt.x+'|'+pt.y];});
-            }
-          });
-        }catch(e){}
-      },
-      afterDataLimits:function(c,args){
-        if(!/^(sScatter|cmpScatter)$/.test(c.canvas&&c.canvas.id))return;
-        try{
-          var sc=args.scale, vals=[];
-          (c.data.datasets||[]).forEach(function(ds){(ds.data||[]).forEach(function(pt){
-            if(pt&&typeof pt[sc.axis]==='number')vals.push(pt[sc.axis]);
-          });});
-          if(!vals.length)return;
-          var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);
-          if(sc.axis==='x'){sc.min=mn-2;sc.max=mx+2;}
-          else{var pad=(mx-mn)*0.08||1;sc.min=mn-pad;sc.max=mx+pad;}
-        }catch(e){}
-      }
+      beforeUpdate:function(c){if(!/^(sScatter|cmpScatter)$/.test(c.canvas&&c.canvas.id))return;try{var s=c.options.scales||{};['x','y'].forEach(function(a){if(s[a]){delete s[a].min;delete s[a].max;}});var empties={};(ENTRIES||[]).forEach(function(e){if(e&&(!e.l||!e.l.length))empties[e.h+'|'+e.p]=1;});(c.data.datasets||[]).forEach(function(ds){if(/hole/i.test(ds.label||'')&&Array.isArray(ds.data)){ds.data=ds.data.filter(function(pt){return pt&&!(pt._empty)&&!empties[pt.x+'|'+pt.y];});}});}catch(e){}},
+      afterDataLimits:function(c,args){if(!/^(sScatter|cmpScatter)$/.test(c.canvas&&c.canvas.id))return;try{var sc=args.scale,vals=[];(c.data.datasets||[]).forEach(function(ds){(ds.data||[]).forEach(function(pt){if(pt&&typeof pt[sc.axis]==='number')vals.push(pt[sc.axis]);});});if(!vals.length)return;var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);if(sc.axis==='x'){sc.min=mn-2;sc.max=mx+2;}else{var pad=(mx-mn)*0.08||1;sc.min=mn-pad;sc.max=mx+pad;}}catch(e){}}
     });
-    Object.values(Chart.instances||{}).forEach(function(ci){
-      if(ci.canvas&&/^(sScatter|cmpScatter)$/.test(ci.canvas.id)){try{ci.update();}catch(e){}}
-    });
+    Object.values(Chart.instances||{}).forEach(function(ci){if(ci.canvas&&/^(sScatter|cmpScatter)$/.test(ci.canvas.id)){try{ci.update();}catch(e){}}});
   }
 
-  /* 2: floating Projected Cashers box */
+  /* ---------- floating cashers box ---------- */
   function renderFloatBox(){
     var box=document.getElementById('cashersFloatBox');
-    if(!box){
-      box=document.createElement('div');
-      box.id='cashersFloatBox';
-      box.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(17,24,39,.92);color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:8px 12px;font:600 12px/1.3 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.4);min-width:120px;text-align:center;';
-      document.body.appendChild(box);
-    }
+    if(!box){box=document.createElement('div');box.id='cashersFloatBox';box.style.cssText='position:fixed;right:14px;bottom:14px;z-index:9999;background:rgba(17,24,39,.92);color:#e5e7eb;border:1px solid #374151;border-radius:10px;padding:8px 12px;font:600 12px/1.3 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.4);min-width:120px;text-align:center;';document.body.appendChild(box);}
     var n=cashRankVal(),tot=ENTRIES.length,pct=tot?Math.round(n/tot*1000)/10:0;
-    box.innerHTML='<div style="color:#9ca3af;font-size:10px;letter-spacing:.05em;text-transform:uppercase;">Projected Cashers</div>'+
-      '<div style="font-size:20px;color:#34d399;margin:2px 0;">'+n+'<span style="color:#6b7280;font-size:12px;"> / '+tot+'</span></div>'+
-      '<div style="color:#9ca3af;font-size:11px;">'+pct+'%</div>';
+    box.innerHTML='<div style="color:#9ca3af;font-size:10px;letter-spacing:.05em;text-transform:uppercase;">Projected Cashers</div><div style="font-size:20px;color:#34d399;margin:2px 0;">'+n+'<span style="color:#6b7280;font-size:12px;"> / '+tot+'</span></div><div style="color:#9ca3af;font-size:11px;">'+pct+'%</div>';
   }
 
-  /* 3: per-entry Round Completion table */
+  /* ---------- per-entry round-completion table ---------- */
+  function findEntry(name){return ENTRIES.find(function(x){return x.n===name;})||ENTRIES.find(function(x){return x.n&&x.n.toLowerCase().indexOf(name.toLowerCase())>=0;});}
   function renderReadout(){
-    var rc=document.getElementById('roundCompleteChart');
-    var wrap=rc?rc.parentNode:null;
+    var rc=document.getElementById('roundCompleteChart');if(rc){rc.style.display='none';if(rc.parentNode)rc.parentNode.style.height='auto';}
     var card=document.getElementById('roundCompleteCard');
-    if(rc)rc.style.display='none';
-    if(wrap)wrap.style.height='auto';
+    if(card){Array.prototype.forEach.call(card.querySelectorAll('div'),function(d){if(d.children.length===0&&/%\s*of current round complete/i.test(d.textContent||'')){d.style.display='none';}});}
     var host=document.getElementById('roundCompleteReadout');
-    if(!host){
-      host=document.createElement('div');
-      host.id='roundCompleteReadout';
-      host.style.cssText='margin-top:8px;';
-      (card||wrap||document.body).appendChild(host);
-    }
+    if(!host){host=document.createElement('div');host.id='roundCompleteReadout';host.style.cssText='margin-top:8px;';if(card)card.appendChild(host);else if(rc&&rc.parentNode)rc.parentNode.appendChild(host);else document.body.appendChild(host);}
     var cr=cashRankVal();
-    var cells=TRACKED_NAMES.map(function(name){
-      var e=findEntry(name);
-      if(!e)return {t:SHORT[name],spots:'-',sc:'#9ca3af',own:'-',tween:'-'};
-      var spots=e.r-cr;
-      var lo=Math.min(e.r,cr),hi=Math.max(e.r,cr);
-      var tw=ENTRIES.filter(function(x){return x.l&&x.l.length&&x.r>lo&&x.r<hi;});
-      var avg=tw.length?Math.round(tw.reduce(function(s,x){return s+x.h;},0)/tw.length*10)/10:0;
-      return {t:SHORT[name],spots:(spots>0?'+':'')+spots,sc:spots<=0?'#34d399':'#f87171',own:e.h,tween:avg};
-    });
-    function row(label,key){
-      return '<tr><td style="text-align:left;color:#9ca3af;padding:3px 8px;white-space:nowrap;">'+label+'</td>'+
-        cells.map(function(c){
-          var col=key==='spots'?c.sc:'#e5e7eb';
-          return '<td style="text-align:center;padding:3px 10px;color:'+col+';font-weight:600;">'+c[key]+'</td>';
-        }).join('')+'</tr>';
-    }
-    host.innerHTML='<div style="color:#9ca3af;font-size:11px;margin-bottom:4px;">Cash rank: <b style="color:#e5e7eb;">'+cr+'</b> (projected cashers)</div>'+
-      '<table style="width:100%;border-collapse:collapse;font:12px/1.3 system-ui,sans-serif;">'+
-      '<thead><tr><th></th>'+cells.map(function(c){return '<th style="text-align:center;padding:3px 10px;color:#93c5fd;">'+c.t+'</th>';}).join('')+'</tr></thead>'+
-      '<tbody>'+row('Spots to cash line','spots')+row('Holes remaining (own)','own')+row("Avg holes left / 'tween team",'tween')+'</tbody></table>';
+    var cells=TRACKED_NAMES.map(function(name){var e=findEntry(name);if(!e)return{t:SHORT[name],spots:'-',sc:'#9ca3af',own:'-',tween:'-'};var spots=e.r-cr;var lo=Math.min(e.r,cr),hi=Math.max(e.r,cr);var tw=ENTRIES.filter(function(x){return x.l&&x.l.length&&x.r>lo&&x.r<hi;});var avg=tw.length?Math.round(tw.reduce(function(s,x){return s+x.h;},0)/tw.length*10)/10:0;return{t:SHORT[name],spots:(spots>0?'+':'')+spots,sc:spots<=0?'#34d399':'#f87171',own:e.h,tween:avg};});
+    function row(label,key){return '<tr><td style="text-align:left;color:#9ca3af;padding:3px 8px;white-space:nowrap;">'+label+'</td>'+cells.map(function(c){var col=key==='spots'?c.sc:'#e5e7eb';return '<td style="text-align:center;padding:3px 10px;color:'+col+';font-weight:600;">'+c[key]+'</td>';}).join('')+'</tr>';}
+    host.innerHTML='<div style="color:#9ca3af;font-size:11px;margin-bottom:4px;">Cash rank: <b style="color:#e5e7eb;">'+cr+'</b> (projected cashers)</div><table style="width:100%;border-collapse:collapse;font:12px/1.3 system-ui,sans-serif;"><thead><tr><th></th>'+cells.map(function(c){return '<th style="text-align:center;padding:3px 10px;color:#93c5fd;">'+c.t+'</th>';}).join('')+'</tr></thead><tbody>'+row('Spots to cash line','spots')+row('Holes remaining (own)','own')+row("Avg holes left / 'tween team",'tween')+'</tbody></table>';
   }
 
-  function boot(){ try{registerScatterPlugin();}catch(e){} try{renderFloatBox();}catch(e){} try{renderReadout();}catch(e){} }
-  if(document.readyState!=='loading')boot(); else document.addEventListener('DOMContentLoaded',boot);
+  function tag(){var h=document.getElementById('headerSub');if(h){var lbl=' — forecast: '+(window.FORECAST_MODE==='dg'?'DG model ('+DG_METRIC+')':'Odds');h.textContent=h.textContent.replace(/ — forecast:[^—]*$/,'');h.textContent+=lbl;}}
+
+  function boot(){try{registerScatterPlugin();}catch(e){}try{renderFloatBox();}catch(e){}try{renderReadout();}catch(e){}try{renderToggle();}catch(e){}try{tag();}catch(e){}}
+  function bootDG(){try{refreshDG();}catch(e){}}
+  if(document.readyState!=='loading'){boot();bootDG();}else document.addEventListener('DOMContentLoaded',function(){boot();bootDG();});
   setInterval(boot,5000);
+  setInterval(refreshDG,5*60*1000);
 })();
 </script>
 </body>
