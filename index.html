@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.24 — 2026-06-28 — three-way forecast toggle (Odds|Top20|Cut) + scoped odds-column swapper -->
+<!-- We Love Stevie Dashboard v3.25 — 2026-06-28 — forecast swapper extended to comparison-card golfer pills -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,7 +329,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.24 (2026-06-28) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.25 (2026-06-28) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -377,7 +377,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.24 — 2026-06-28';
+const VERSION = 'v3.25 — 2026-06-28';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -1807,6 +1807,14 @@ function resetForNextTournament() {
         if(!cell.hasAttribute('data-orig-odds'))cell.setAttribute('data-orig-odds',txt);
         cell.textContent=label+' '+Math.round(dg*100)+'% / '+txt;
       });
+    });
+    document.querySelectorAll('.cmp-player').forEach(function(row){
+      var pill=row.querySelector('.odds-pill');if(!pill||/odds-cut/.test(pill.className))return;
+      var txt=pill.textContent.trim();if(!/^\d+\.?\d*$/.test(txt)||!(parseFloat(txt)>0))return;
+      var nameEl=row.querySelector('.pname'),playerName=nameEl?nameEl.textContent.trim():'';if(!playerName)return;
+      var dg=getDGProb(playerName);if(dg==null)return;
+      if(!pill.hasAttribute('data-orig-odds'))pill.setAttribute('data-orig-odds',txt);
+      pill.textContent=label+' '+Math.round(dg*100)+'% / '+txt;
     });
   }
 
