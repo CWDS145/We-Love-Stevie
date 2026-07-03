@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.30 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
+<!-- We Love Stevie Dashboard v3.31 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,7 +329,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.30 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.31 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -785,7 +785,7 @@ function handleFile(file) {
       loadData(data);
       renderFieldTable();
       autoLoadDrinkMilk();
-      recordScoreSnapshot();
+if (isLive) fetchLive(); else startLive();   // v3.31: live odds permanent — re-applied immediately after every upload
       const histMsg = sameTournament ? ' (history preserved)' : ' (fresh tournament)';
       showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' players with odds' + (isZip ? ' (from ZIP)' : '') + histMsg + '.', true);
     } catch(err) { showStatus('Parse error: ' + err.message, false); }
@@ -1861,7 +1861,7 @@ function resetForNextTournament() {
   setInterval(refreshDGMetrics,5*60*1000);
 })();
 </script>
- <!-- ==== WLS RESULTS auto-poll v3.30 — localhost bridge ==== -->
+ <!-- ==== WLS RESULTS auto-poll v3.31 — localhost bridge ==== -->
 <script>
 (function () {
   var BRIDGE  = 'http://127.0.0.1:8781';
