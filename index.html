@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.27 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
+<!-- We Love Stevie Dashboard v3.28 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,7 +329,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.27 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.28 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -1858,12 +1858,12 @@ function resetForNextTournament() {
   setInterval(refreshDGMetrics,5*60*1000);
 })();
 </script>
- <!-- ==== WLS RESULTS auto-poll v3.27 — localhost bridge ==== -->
+ <!-- ==== WLS RESULTS auto-poll v3.28 — localhost bridge ==== -->
 <script>
 (function () {
   var BRIDGE  = 'http://127.0.0.1:8781';
   var POLL_MS = 120000;
-  var lastM = 0, busy = false, firstLoad = true;
+  var lastM = 0, busy = false;
 
   var wrap = document.createElement('div');
   wrap.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:99999;font-family:"DM Sans",system-ui,sans-serif;display:flex;align-items:center;gap:8px;background:rgba(18,20,26,.92);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px 10px;box-shadow:0 6px 20px rgba(0,0,0,.4);backdrop-filter:blur(4px)';
@@ -1892,15 +1892,12 @@ function resetForNextTournament() {
       if (!meta.name) { setStatus('warn', 'bridge up \u2014 no matching file'); busy = false; return; }
       if (meta.mtime === lastM) { setStatus('on', 'no change \u00b7 ' + nowStr()); busy = false; return; }
       var text = await (await bfetch('/latest.csv')).text();
-      processCSVText(text);
-      try { POWER_CACHE = null; } catch (e) {}
-      if (firstLoad && typeof autoLoadDrinkMilk === 'function') { try { autoLoadDrinkMilk(); } catch (e) {} }
-      firstLoad = false;
+      handleFile(new File([text], meta.name.replace(/\.zip$/i, '.csv'), { type: 'text/csv' }));
       lastM = meta.mtime;
       setStatus('on', 'updated ' + nowStr() + ' \u00b7 ' + meta.name);
     } catch (e) {
       console.error('[WLS bridge]', e);
-      setStatus('off', 'bridge offline \u2014 run wls_bridge.py');
+      setStatus('off', (e && e.message) ? String(e.message).slice(0, 70) : 'bridge offline \u2014 run wls_bridge.py');
     }
     busy = false;
   }
