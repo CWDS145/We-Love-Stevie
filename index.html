@@ -1858,5 +1858,56 @@ function resetForNextTournament() {
   setInterval(refreshDGMetrics,5*60*1000);
 })();
 </script>
+ <!-- ==== WLS RESULTS auto-poll v3.27 — localhost bridge ==== -->
+<script>
+(function () {
+  var BRIDGE  = 'http://127.0.0.1:8781';
+  var POLL_MS = 120000;
+  var lastM = 0, busy = false, firstLoad = true;
+
+  var wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:99999;font-family:"DM Sans",system-ui,sans-serif;display:flex;align-items:center;gap:8px;background:rgba(18,20,26,.92);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px 10px;box-shadow:0 6px 20px rgba(0,0,0,.4);backdrop-filter:blur(4px)';
+  var dot = document.createElement('span');
+  dot.style.cssText = 'width:9px;height:9px;border-radius:50%;background:#e0503a;flex:0 0 auto';
+  var label = document.createElement('span');
+  label.style.cssText = 'color:#cfd6e4;font-size:12px;white-space:nowrap;max-width:300px;overflow:hidden;text-overflow:ellipsis';
+  label.textContent = 'RESULTS auto-update: connecting\u2026';
+  var btn = document.createElement('button');
+  btn.style.cssText = 'font-family:inherit;font-size:12px;font-weight:600;color:#0b0d12;background:#7fd1a6;border:0;border-radius:7px;padding:6px 10px;cursor:pointer';
+  btn.textContent = 'Poll now';
+  wrap.appendChild(dot); wrap.appendChild(label); wrap.appendChild(btn);
+  (document.body || document.documentElement).appendChild(wrap);
+
+  function setStatus(state, msg) {
+    dot.style.background = state === 'on' ? '#7fd1a6' : state === 'warn' ? '#e6c34a' : '#e0503a';
+    label.textContent = 'RESULTS auto-update: ' + msg;
+  }
+  function nowStr() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  function bfetch(path) { return fetch(BRIDGE + path, { cache: 'no-store', targetAddressSpace: 'loopback' }); }
+
+  async function pollOnce() {
+    if (busy) return; busy = true;
+    try {
+      var meta = await (await bfetch('/meta')).json();
+      if (!meta.name) { setStatus('warn', 'bridge up \u2014 no matching file'); busy = false; return; }
+      if (meta.mtime === lastM) { setStatus('on', 'no change \u00b7 ' + nowStr()); busy = false; return; }
+      var text = await (await bfetch('/latest.csv')).text();
+      processCSVText(text);
+      try { POWER_CACHE = null; } catch (e) {}
+      if (firstLoad && typeof autoLoadDrinkMilk === 'function') { try { autoLoadDrinkMilk(); } catch (e) {} }
+      firstLoad = false;
+      lastM = meta.mtime;
+      setStatus('on', 'updated ' + nowStr() + ' \u00b7 ' + meta.name);
+    } catch (e) {
+      console.error('[WLS bridge]', e);
+      setStatus('off', 'bridge offline \u2014 run wls_bridge.py');
+    }
+    busy = false;
+  }
+  btn.addEventListener('click', pollOnce);
+  pollOnce();
+  setInterval(pollOnce, POLL_MS);
+})();
+</script>
 </body>
 </html>
