@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.26 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
+<!-- We Love Stevie Dashboard v3.27 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -329,7 +329,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.26 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.27 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -1859,153 +1859,4 @@ function resetForNextTournament() {
 })();
 </script>
 </body>
- <!-- ==== WLS RESULTS folder auto-poll (v3.14) — additive; paste once before </body> ==== -->
-<script>
-(function () {
-  // ---- config ----
-  var POLL_MS = 120000;                                 // 2 minutes
-  var CONTEST_PREFIX = 'contest-standings-191818116';   // this contest's series; set to 'contest-standings-' to track newest of ANY contest
-  var IDB_DB = 'wls-fs-autopoll', IDB_STORE = 'h', IDB_KEY = 'resultsDir';
-
-  // ---- state ----
-  var dirHandle = null, timer = null, lastMtime = 0, busy = false, firstLoad = true;
-
-  // ---- tiny IndexedDB (persists the folder handle across reloads) ----
-  function idb(mode, fn) {
-    return new Promise(function (res, rej) {
-      var o = indexedDB.open(IDB_DB, 1);
-      o.onupgradeneeded = function () { o.result.createObjectStore(IDB_STORE); };
-      o.onerror = function () { rej(o.error); };
-      o.onsuccess = function () {
-        var db = o.result, tx = db.transaction(IDB_STORE, mode), st = tx.objectStore(IDB_STORE);
-        var r = fn(st);
-        tx.oncomplete = function () { res(r && r.result); db.close(); };
-        tx.onerror = function () { rej(tx.error); db.close(); };
-      };
-    });
-  }
-  function idbGet() { return idb('readonly',  function (st) { return st.get(IDB_KEY); }); }
-  function idbSet(v) { return idb('readwrite', function (st) { st.put(v, IDB_KEY); }); }
-
-  // ---- UI (self-injected fixed pill — zero impact on existing layout; move via right/bottom below) ----
-  var wrap = document.createElement('div');
-  wrap.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:99999;font-family:"DM Sans",system-ui,sans-serif;display:flex;align-items:center;gap:8px;background:rgba(18,20,26,.92);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:8px 10px;box-shadow:0 6px 20px rgba(0,0,0,.4);backdrop-filter:blur(4px)';
-  var dot = document.createElement('span');
-  dot.style.cssText = 'width:9px;height:9px;border-radius:50%;background:#e0503a;flex:0 0 auto';
-  var label = document.createElement('span');
-  label.style.cssText = 'color:#cfd6e4;font-size:12px;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis';
-  label.textContent = 'RESULTS auto-update: off';
-  var btn = document.createElement('button');
-  btn.style.cssText = 'font-family:inherit;font-size:12px;font-weight:600;color:#0b0d12;background:#7fd1a6;border:0;border-radius:7px;padding:6px 10px;cursor:pointer';
-  btn.textContent = 'Connect folder';
-  wrap.appendChild(dot); wrap.appendChild(label); wrap.appendChild(btn);
-  (document.body || document.documentElement).appendChild(wrap);
-
-  function setStatus(state, msg) {
-    dot.style.background = state === 'on' ? '#7fd1a6' : state === 'paused' ? '#e6c34a' : '#e0503a';
-    label.textContent = 'RESULTS auto-update: ' + msg;
-  }
-  function nowStr() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
-
-  // ---- ZIP/CSV extraction (mirrors dashboard: PK magic-byte detect + BOM strip) ----
-  async function extractCsv(buf) {
-    var b = new Uint8Array(buf);
-    var isZip = b.length >= 4 && b[0] === 0x50 && b[1] === 0x4B && b[2] === 0x03 && b[3] === 0x04;
-    if (isZip) {
-      if (typeof JSZip === 'undefined') throw new Error('JSZip not loaded');
-      var zip = await JSZip.loadAsync(buf);
-      var entry = Object.values(zip.files).find(function (f) { return !f.dir && /\.csv$/i.test(f.name); });
-      if (!entry) return null;
-      var t = await entry.async('string');
-      return t.charCodeAt(0) === 0xFEFF ? t.slice(1) : t;
-    }
-    var s = new TextDecoder('utf-8').decode(buf);
-    return s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s;
-  }
-
-  // ---- one poll cycle ----
-  async function pollOnce() {
-    if (!dirHandle || busy) return;
-    busy = true;
-    try {
-      var perm = await dirHandle.queryPermission({ mode: 'read' });
-      if (perm !== 'granted') { setStatus('paused', 'click Resume to re-grant'); btn.textContent = 'Resume'; busy = false; return; }
-
-      var newest = null, newestName = '';
-      for await (var ent of dirHandle.entries()) {
-        var name = ent[0], h = ent[1];
-        if (h.kind !== 'file') continue;
-        if (!/\.zip$/i.test(name)) continue;                         // ignores in-progress *.crdownload
-        if (CONTEST_PREFIX && name.indexOf(CONTEST_PREFIX) !== 0) continue;
-        var f = await h.getFile();
-        if (!newest || f.lastModified > newest.lastModified) { newest = f; newestName = name; }
-      }
-      if (!newest) { setStatus('on', 'watching (no matching .zip yet)'); busy = false; return; }
-      if (newest.lastModified === lastMtime) { setStatus('on', 'no change \u00b7 ' + nowStr()); busy = false; return; }
-
-      var text = await extractCsv(await newest.arrayBuffer());
-      if (text == null) { setStatus('on', 'zip had no .csv \u00b7 ' + nowStr()); busy = false; return; }
-
-      processCSVText(text);                                           // reuse dashboard core
-      try { POWER_CACHE = null; } catch (e) {}                        // invalidate power-rank cache (ODDS/ENTRIES changed)
-      if (firstLoad && typeof autoLoadDrinkMilk === 'function') { try { autoLoadDrinkMilk(); } catch (e) {} }
-      firstLoad = false;
-
-      lastMtime = newest.lastModified;
-      setStatus('on', 'updated ' + nowStr() + ' \u00b7 ' + newestName);
-    } catch (e) {
-      console.error('[WLS auto-poll]', e);
-      setStatus('on', 'retry next cycle \u00b7 ' + nowStr());          // transient file lock during download rename
-    }
-    busy = false;
-  }
-
-  function start() {
-    if (timer) clearInterval(timer);
-    setStatus('on', 'watching\u2026'); btn.textContent = 'Reconnect';
-    pollOnce();
-    timer = setInterval(pollOnce, POLL_MS);
-  }
-
-  async function connect() {
-    try {
-      if (!window.showDirectoryPicker) { alert('Use Chrome or Edge (desktop) \u2014 this browser lacks the File System Access API.'); return; }
-      dirHandle = await window.showDirectoryPicker({ mode: 'read', id: 'wls-results' });
-      await idbSet(dirHandle);
-      lastMtime = 0; firstLoad = true;
-      start();
-    } catch (e) {
-      if (e && e.name === 'AbortError') return;                       // user cancelled picker
-      console.error('[WLS auto-poll] connect', e);
-      setStatus('off', 'connect failed');
-    }
-  }
-
-  async function onClick() {
-    if (dirHandle) {
-      var perm = 'denied';
-      try { perm = await dirHandle.queryPermission({ mode: 'read' }); } catch (e) {}
-      if (perm !== 'granted') {                                       // restored-but-prompt: this click re-grants (user gesture)
-        try { perm = await dirHandle.requestPermission({ mode: 'read' }); } catch (e) {}
-        if (perm === 'granted') { lastMtime = 0; firstLoad = true; start(); return; }
-      }
-      // already granted -> fall through to picker so you can switch folders
-    }
-    connect();
-  }
-  btn.addEventListener('click', onClick);
-
-  // ---- restore on load: reuse a previously granted folder without re-picking ----
-  (async function restore() {
-    try {
-      var h = await idbGet();
-      if (!h) return;
-      dirHandle = h;
-      var perm = await dirHandle.queryPermission({ mode: 'read' });
-      if (perm === 'granted') start();
-      else { setStatus('paused', 'click Resume to re-grant folder'); btn.textContent = 'Resume'; }
-    } catch (e) { console.error('[WLS auto-poll] restore', e); }
-  })();
-})();
-</script>
 </html>
