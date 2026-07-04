@@ -793,6 +793,7 @@ function handleFile(file) {
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
       loadData(data);
+      recordScoreSnapshot();
       renderFieldTable();
       autoLoadDrinkMilk();
 if (isLive) fetchLive(); else startLive();   // v3.31: live odds permanent — re-applied immediately after every upload
