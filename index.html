@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.32 — 2026-07-05 — contest-aware cash line (DK commission table); default fraction no longer hardcoded 45% -->
+<!-- We Love Stevie Dashboard v3.33 — 2026-07-05 — contest-aware cash line (DK commission table); default fraction no longer hardcoded 45% -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -349,7 +349,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.32 (2026-07-05) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.33 (2026-07-05) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -421,7 +421,7 @@ function cashFraction(){
   const m = DK_MULTIPLE[CONTEST_TYPE] || 2;
   return (1 - dkRake(ENTRY_FEE, CONTEST_TYPE)) / m;      // multiplier: (1-R)/m
 }
-function cashRank(n){ return Math.round(n * cashFraction()); }
+function cashRankFor(n){ return Math.round(n * cashFraction()); }
 function updatePaidInfo(){
   const el = document.getElementById('paidInfo'); if (!el) return;
   const r = dkRake(ENTRY_FEE, CONTEST_TYPE);
@@ -441,7 +441,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.32 — 2026-07-05';
+const VERSION = 'v3.33 — 2026-07-05';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -468,7 +468,7 @@ function avgCorrectionFactor() {
 function computeCashLine() {
   if (!ENTRIES.length) { CASH = 0; return; }
   if (CASH_OVERRIDE !== null) { CASH = CASH_OVERRIDE; updateCashInfo(); return; }
-  const cashRank = cashRank(ENTRIES.length);
+  const cashRank = cashRankFor(ENTRIES.length);
   const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
   const rawCash = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
   const factor = avgCorrectionFactor();
@@ -493,7 +493,7 @@ function updateCashInfo(rawCash, factor) {
 function applyManualCash() {
   const v = parseFloat(document.getElementById('cashLineInput').value);
   if (isNaN(v) || v <= 0) return;
-  const cashRank = cashRank(ENTRIES.length);
+  const cashRank = cashRankFor(ENTRIES.length);
   const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
   const rawCash = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
   if (rawCash > 0) saveCashCorrection(v / rawCash);
@@ -887,7 +887,7 @@ function cashProb(e) {
   if (!ENTRIES.length) return 0;
   const pr = getPowerRank(e);
   if (pr === null) return 0;
-  const cashRank = cashRank(ENTRIES.length);
+  const cashRank = cashRankFor(ENTRIES.length);
   if (cashRank <= 0) return 0;
   if (pr <= cashRank) {
     return Math.round(55 + 40 * (1 - pr / cashRank));
@@ -911,7 +911,7 @@ function loadPreset(names) {
  
 function renderFieldTable() {
   if (!ENTRIES.length) return;
-  const cashSlots = ENTRIES.filter(e => e.p >= CASH).length || cashRank(TOTAL);
+  const cashSlots = ENTRIES.filter(e => e.p >= CASH).length || cashRankFor(TOTAL);
   const buckets = [];
   for (let i = 0; i < ENTRIES.length; i += 25) {
     buckets.push([i+1, Math.min(i+25, ENTRIES.length)]);
@@ -952,7 +952,7 @@ function renderSingle(entry) {
   document.getElementById('singleEmpty').classList.add('hidden');
   const o = getOdds(entry), gap = CASH - entry.p, ok = gap <= 0, prob = cashProb(entry);
   const ps = powerScore(entry), pr = getPowerRank(entry);
-  const cashRank = cashRank(ENTRIES.length);
+  const cashRank = cashRankFor(ENTRIES.length);
   const inCashByPower = pr !== null && pr <= cashRank;
   document.getElementById('sRank').textContent = entry.r;
   document.getElementById('sRankSub').textContent = 'of ' + TOTAL;
@@ -987,7 +987,7 @@ function renderSingle(entry) {
   tbody.appendChild(totTr);
   const ctx1 = document.getElementById('sCompChart');
   if (sCompChart) sCompChart.destroy();
-  const cashRankForChart = cashRank(ENTRIES.length);
+  const cashRankForChart = cashRankFor(ENTRIES.length);
   const cashCutoffScore = cashRankForChart > 0 ? (function(){ const s=[...ENTRIES].sort((a,b)=>powerScore(b)-powerScore(a)); return cashRankForChart<=s.length?powerScore(s[cashRankForChart-1]):0; })() : 0;
   sCompChart = new Chart(ctx1, {type:'bar',data:{labels:['This entry','Cash cutoff'],datasets:[{data:[ps,cashCutoffScore],backgroundColor:['#3b82f6','#ef4444'],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Power Score (higher = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{y:{beginAtZero:true,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},x:{ticks:{color:'#9ca3b4',font:{size:11}},grid:{display:false}}}}});
   const pd = document.getElementById('sPassBreakdown');
@@ -1129,7 +1129,7 @@ function renderCompare() {
     const wO = d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);
     const nO = d.odds.active.filter(x=>x.odds===null);
     const players = [...wO,...nO,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
-    const cashRank = cashRank(ENTRIES.length);
+    const cashRank = cashRankFor(ENTRIES.length);
     const inCash = d.pr !== null && d.pr <= cashRank;
     return '<div class="cmp-col"><div class="cmp-rank-badge cmp-rank-'+(ri+1)+'">#'+(ri+1)+'</div>'+
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
@@ -1552,7 +1552,7 @@ function buildLeaderboardCSV() {
   const headers = ['Rank','EntryName','Points','HolesRemaining','PowerScore','PowerRank','CashProbPct','ProjectedCash','LineupPlayers','CutPlayers'];
   const rows = [headers.join(',')];
   const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
-  const cashRank = cashRank(ENTRIES.length);
+  const cashRank = cashRankFor(ENTRIES.length);
   sorted.forEach(e => {
     const ps = powerScore(e);
     const pr = getPowerRank(e);
@@ -1619,7 +1619,7 @@ function escapeHtml(s) {
  
 function buildSnapshotHTML(meta) {
   const sortedByRank = [...ENTRIES].sort((a,b) => a.r - b.r);
-  const cashRank = cashRank(ENTRIES.length);
+  const cashRank = cashRankFor(ENTRIES.length);
   const rowsHtml = sortedByRank.map(e => {
     const ps = powerScore(e);
     const pr = getPowerRank(e);
