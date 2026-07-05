@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.31 — 2026-07-03 — RESULTS folder auto-poll (File System Access) -->
+<!-- We Love Stevie Dashboard v3.32 — 2026-07-05 — contest-aware cash line (DK commission table); default fraction no longer hardcoded 45% -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -225,6 +225,16 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   <button onclick="applyManualCash()">Override</button>
   <button onclick="clearCashOverride()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Auto</button>
   <span id="cashInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
+  <label style="margin-left:16px">Format</label>
+  <select id="contestTypeInput" onchange="applyContestConfig()" style="width:110px">
+    <option value="double_up">Double-up</option>
+    <option value="50_50">50/50</option>
+    <option value="triple_up">Triple-up</option>
+    <option value="5x">5&#215;</option>
+  </select>
+  <label style="margin-left:8px">Entry $</label>
+  <input type="number" id="entryFeeInput" value="5" step="0.5" min="0.25" onchange="applyContestConfig()" style="width:70px">
+  <span id="paidInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
   <button onclick="openEndTournamentModal()" class="save-btn" title="Archive this tournament to a ZIP bundle then reset for the next one">End Tournament &amp; Save</button>
   <button onclick="hardReset()" style="background:var(--red);color:#fff;font-size:12px;padding:7px 16px;font-weight:700">HARD RESET</button>
 </div>
@@ -339,7 +349,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.31 (2026-07-03) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.32 (2026-07-05) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -347,7 +357,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   <div class="modal-box">
     <button class="modal-close" onclick="document.getElementById('probModal').classList.remove('open')">&#x2715;</button>
     <div class="modal-title">Cash probability logic</div>
-    <div style="font-size:13px;color:var(--t2);line-height:1.6">Power Score = sum of (1 / odds) for each non-cut player in the lineup. Power Rank sorts all entries by Power Score descending. Cash line = points of entry at 45th percentile rank. Projection = top 45% of Power Rank.</div>
+    <div style="font-size:13px;color:var(--t2);line-height:1.6">Power Score = sum of (1 / odds) for each non-cut player in the lineup. Power Rank sorts all entries by Power Score descending. Cash line = points of the entry at the contest’s paid-fraction rank (auto from DK commission table; manual override available). Projection = top paid-fraction of Power Rank.</div>
   </div>
 </div>
  
@@ -387,7 +397,51 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
 <script>
 const VERCEL_URL = 'https://golf-proxy.vercel.app';
 const STORAGE_KEY = 'weLoveStevieDashboard';
-const VERSION = 'v3.25 — 2026-06-28';
+// ── Cash-line paid fraction — DK Maximum Commission Structure (updated 2024-03-11) ──
+// Rake by entry-fee tier × contest structure. Single source of truth for paid fraction.
+const DK_COMMISSION = [
+  // [feeLow, feeHigh, stdGuar(50/50), multGuar(2-5x)]
+  [0.00,      5.00,    0.1590, 0.1305],
+  [5.01,     25.00,    0.1500, 0.1305],
+  [25.01,    49.99,    0.1425, 0.1200],
+  [50.00,    99.99,    0.1200, 0.1200],
+  [100.00,  499.99,    0.1000, 0.1000],
+  [500.00,  999.99,    0.1000, 0.1000],
+  [1000.00, Infinity,  0.0567, 0.0567]
+];
+const DK_MULTIPLE = { double_up: 2, triple_up: 3, '5x': 5 };
+let CONTEST_TYPE = 'double_up';   // '50_50' | 'double_up' | 'triple_up' | '5x' — persisted
+let ENTRY_FEE = 5;                // dollars — persisted
+function dkRake(fee, type){
+  const row = DK_COMMISSION.find(r => fee >= r[0] && fee <= r[1]) || DK_COMMISSION[DK_COMMISSION.length-1];
+  return (type === '50_50') ? row[2] : row[3];
+}
+function cashFraction(){
+  if (CONTEST_TYPE === '50_50') return 0.50;            // pays top half by design
+  const m = DK_MULTIPLE[CONTEST_TYPE] || 2;
+  return (1 - dkRake(ENTRY_FEE, CONTEST_TYPE)) / m;      // multiplier: (1-R)/m
+}
+function cashRank(n){ return Math.round(n * cashFraction()); }
+function updatePaidInfo(){
+  const el = document.getElementById('paidInfo'); if (!el) return;
+  const r = dkRake(ENTRY_FEE, CONTEST_TYPE);
+  el.textContent = 'paid ' + (Math.round(cashFraction()*1000)/10) + '% (rake ' + (Math.round(r*1000)/10) + '%)';
+}
+function applyContestConfig(){
+  const t = document.getElementById('contestTypeInput');
+  const f = document.getElementById('entryFeeInput');
+  if (t) CONTEST_TYPE = t.value;
+  if (f){ const v = parseFloat(f.value); if(!isNaN(v)&&v>0) ENTRY_FEE = v; }
+  POWER_CACHE = null;
+  updatePaidInfo();
+  if (typeof computeCashLine === 'function') computeCashLine();
+  if (typeof recomputeFieldAvgs === 'function') recomputeFieldAvgs();
+  if (typeof renderFieldTable === 'function') renderFieldTable();
+  if (typeof refreshViews === 'function') refreshViews();
+  if (typeof renderScoreChart === 'function') renderScoreChart();
+  if (typeof saveToStorage === 'function') saveToStorage();
+}
+const VERSION = 'v3.32 — 2026-07-05';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -414,7 +468,7 @@ function avgCorrectionFactor() {
 function computeCashLine() {
   if (!ENTRIES.length) { CASH = 0; return; }
   if (CASH_OVERRIDE !== null) { CASH = CASH_OVERRIDE; updateCashInfo(); return; }
-  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const cashRank = cashRank(ENTRIES.length);
   const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
   const rawCash = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
   const factor = avgCorrectionFactor();
@@ -439,7 +493,7 @@ function updateCashInfo(rawCash, factor) {
 function applyManualCash() {
   const v = parseFloat(document.getElementById('cashLineInput').value);
   if (isNaN(v) || v <= 0) return;
-  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const cashRank = cashRank(ENTRIES.length);
   const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
   const rawCash = cashRank > 0 && cashRank <= sorted.length ? sorted[cashRank - 1].p : 0;
   if (rawCash > 0) saveCashCorrection(v / rawCash);
@@ -599,7 +653,7 @@ function saveToStorage() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       entries: ENTRIES, odds: ODDS, freq: FREQ,
-      total: TOTAL, cashOverride: CASH_OVERRIDE,
+      total: TOTAL, cashOverride: CASH_OVERRIDE, contestType: CONTEST_TYPE, entryFee: ENTRY_FEE,
       uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value,
@@ -627,6 +681,10 @@ function fmt(ts) {
 function loadData(d, fromStorage = false) {
   TOTAL = d.total; ODDS = d.odds; FREQ = d.freq; ENTRIES = d.entries;
   CASH_OVERRIDE = d.cashOverride !== undefined ? d.cashOverride : null;
+  CONTEST_TYPE = d.contestType || CONTEST_TYPE;
+  ENTRY_FEE = (d.entryFee !== undefined && d.entryFee > 0) ? d.entryFee : ENTRY_FEE;
+  { const _t=document.getElementById('contestTypeInput'); if(_t) _t.value=CONTEST_TYPE;
+    const _f=document.getElementById('entryFeeInput'); if(_f) _f.value=ENTRY_FEE; updatePaidInfo(); }
   if (CASH_OVERRIDE !== null) document.getElementById('cashLineInput').value = CASH_OVERRIDE;
   computeCashLine();
   CUT_PLAYERS = new Set();
@@ -829,7 +887,7 @@ function cashProb(e) {
   if (!ENTRIES.length) return 0;
   const pr = getPowerRank(e);
   if (pr === null) return 0;
-  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const cashRank = cashRank(ENTRIES.length);
   if (cashRank <= 0) return 0;
   if (pr <= cashRank) {
     return Math.round(55 + 40 * (1 - pr / cashRank));
@@ -853,7 +911,7 @@ function loadPreset(names) {
  
 function renderFieldTable() {
   if (!ENTRIES.length) return;
-  const cashSlots = ENTRIES.filter(e => e.p >= CASH).length || Math.round(TOTAL * 0.45);
+  const cashSlots = ENTRIES.filter(e => e.p >= CASH).length || cashRank(TOTAL);
   const buckets = [];
   for (let i = 0; i < ENTRIES.length; i += 25) {
     buckets.push([i+1, Math.min(i+25, ENTRIES.length)]);
@@ -894,7 +952,7 @@ function renderSingle(entry) {
   document.getElementById('singleEmpty').classList.add('hidden');
   const o = getOdds(entry), gap = CASH - entry.p, ok = gap <= 0, prob = cashProb(entry);
   const ps = powerScore(entry), pr = getPowerRank(entry);
-  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const cashRank = cashRank(ENTRIES.length);
   const inCashByPower = pr !== null && pr <= cashRank;
   document.getElementById('sRank').textContent = entry.r;
   document.getElementById('sRankSub').textContent = 'of ' + TOTAL;
@@ -929,14 +987,14 @@ function renderSingle(entry) {
   tbody.appendChild(totTr);
   const ctx1 = document.getElementById('sCompChart');
   if (sCompChart) sCompChart.destroy();
-  const cashRankForChart = Math.round(ENTRIES.length * 0.45);
+  const cashRankForChart = cashRank(ENTRIES.length);
   const cashCutoffScore = cashRankForChart > 0 ? (function(){ const s=[...ENTRIES].sort((a,b)=>powerScore(b)-powerScore(a)); return cashRankForChart<=s.length?powerScore(s[cashRankForChart-1]):0; })() : 0;
   sCompChart = new Chart(ctx1, {type:'bar',data:{labels:['This entry','Cash cutoff'],datasets:[{data:[ps,cashCutoffScore],backgroundColor:['#3b82f6','#ef4444'],borderRadius:6,barPercentage:.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},title:{display:true,text:'Power Score (higher = better)',color:'#9ca3b4',font:{size:11,weight:'500'}}},scales:{y:{beginAtZero:true,ticks:{color:'#5c6478'},grid:{color:'#2a3040'}},x:{ticks:{color:'#9ca3b4',font:{size:11}},grid:{display:false}}}}});
   const pd = document.getElementById('sPassBreakdown');
   if (inCashByPower) { pd.innerHTML = '<div style="color:var(--green);font-size:13px;padding:8px 0">Projected to cash — Power Rank #' + pr + ' (cutoff: #' + cashRankForChart + ')</div>'; }
   else {
     const entriesToPass = pr - cashRankForChart;
-    pd.innerHTML = '<div style="color:var(--red);font-size:13px;padding:8px 0">' + entriesToPass + ' entries to pass by power rank to reach top 45% (cutoff: #' + cashRankForChart + ')</div>';
+    pd.innerHTML = '<div style="color:var(--red);font-size:13px;padding:8px 0">' + entriesToPass + ' entries to pass by power rank to reach top ' + Math.round(cashFraction()*100) + '% (cutoff: #' + cashRankForChart + ')</div>';
   }
   const ctx2 = document.getElementById('sScatter');
   if (sScatterChart) sScatterChart.destroy();
@@ -1071,7 +1129,7 @@ function renderCompare() {
     const wO = d.odds.active.filter(x=>x.odds!==null).sort((a,b)=>a.odds-b.odds);
     const nO = d.odds.active.filter(x=>x.odds===null);
     const players = [...wO,...nO,...d.odds.cut.map(c=>({...c,odds:null,isCut:true}))];
-    const cashRank = Math.round(ENTRIES.length * 0.45);
+    const cashRank = cashRank(ENTRIES.length);
     const inCash = d.pr !== null && d.pr <= cashRank;
     return '<div class="cmp-col"><div class="cmp-rank-badge cmp-rank-'+(ri+1)+'">#'+(ri+1)+'</div>'+
       '<div class="cmp-name" style="color:'+COLORS[i]+'">'+d.entry.n+'</div>'+
@@ -1413,7 +1471,7 @@ function renderScoreChart() {
     spanGaps: true
   }));
   datasets.push({
-    label: 'Cash line (top 45%)',
+    label: 'Cash line (top ' + Math.round(cashFraction()*100) + '%)',
     data: SCORE_HISTORY.map(() => CASH),
     borderColor: '#ef4444',
     borderWidth: 1.5,
@@ -1494,7 +1552,7 @@ function buildLeaderboardCSV() {
   const headers = ['Rank','EntryName','Points','HolesRemaining','PowerScore','PowerRank','CashProbPct','ProjectedCash','LineupPlayers','CutPlayers'];
   const rows = [headers.join(',')];
   const sorted = [...ENTRIES].sort((a,b) => a.r - b.r);
-  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const cashRank = cashRank(ENTRIES.length);
   sorted.forEach(e => {
     const ps = powerScore(e);
     const pr = getPowerRank(e);
@@ -1561,7 +1619,7 @@ function escapeHtml(s) {
  
 function buildSnapshotHTML(meta) {
   const sortedByRank = [...ENTRIES].sort((a,b) => a.r - b.r);
-  const cashRank = Math.round(ENTRIES.length * 0.45);
+  const cashRank = cashRank(ENTRIES.length);
   const rowsHtml = sortedByRank.map(e => {
     const ps = powerScore(e);
     const pr = getPowerRank(e);
@@ -1763,6 +1821,7 @@ function resetForNextTournament() {
     }
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
   }
+  try{updatePaidInfo();}catch(e){}
   startLive();
 })();
 </script>
