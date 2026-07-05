@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.33 — 2026-07-05 — contest-aware cash line (DK commission table); default fraction no longer hardcoded 45% -->
+<!-- We Love Stevie Dashboard v3.34 — 2026-07-05 — score-tracker x-axis window sliders (From/To, oldest capture -> now) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -203,6 +203,13 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
     </div>
   </div>
   <div style="position:relative;height:260px"><canvas id="scoreHistoryChart"></canvas></div>
+  <div id="xWindowControls" style="display:none;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+    <span style="font-size:11px;color:var(--t3);min-width:32px">From</span>
+    <input type="range" id="xStart" min="0" max="0" value="0" step="1" oninput="onScoreWindowInput('start')" style="flex:1;min-width:120px;accent-color:var(--blue);cursor:pointer">
+    <span style="font-size:11px;color:var(--t3);min-width:20px">To</span>
+    <input type="range" id="xEnd" min="0" max="0" value="0" step="1" oninput="onScoreWindowInput('end')" style="flex:1;min-width:120px;accent-color:var(--blue);cursor:pointer">
+    <span id="xWindowReadout" style="font-size:11px;color:var(--t2);font-family:var(--mono);white-space:nowrap"></span>
+  </div>
   <div style="font-size:11px;color:var(--t3);margin-top:6px">Updated on each CSV upload. Resets every Sunday.</div>
 </div>
 
@@ -349,7 +356,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.33 (2026-07-05) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.34 (2026-07-05) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -441,7 +448,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.33 — 2026-07-05';
+const VERSION = 'v3.34 — 2026-07-05';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -1403,6 +1410,8 @@ function renderRoundComplete(){
 }
 
 let scoreChart = null;
+let X_START = 0;      // score-tracker x-axis window start index
+let X_END = null;     // window end index; null = follow latest capture (now)
  
 function getSundayStart() {
   const now = new Date();
@@ -1444,6 +1453,8 @@ function loadScoreHistory() {
  
 function clearScoreHistory() {
   SCORE_HISTORY = [];
+  X_START = 0; X_END = null;
+  { const c = document.getElementById('xWindowControls'); if (c) c.style.display = 'none'; }
   try { localStorage.removeItem(HIST_KEY); } catch(e) {}
   if (scoreChart) { scoreChart.destroy(); scoreChart = null; }
   updateScoreHistoryInfo();
@@ -1455,13 +1466,50 @@ function updateScoreHistoryInfo() {
   el.textContent = SCORE_HISTORY.length > 0 ? SCORE_HISTORY.length + ' snapshot' + (SCORE_HISTORY.length>1?'s':'') : 'No data yet — upload CSV to begin';
 }
  
+function onScoreWindowInput(which){
+  const n = SCORE_HISTORY.length;
+  if (n < 2) return;
+  const sEl = document.getElementById('xStart');
+  const eEl = document.getElementById('xEnd');
+  let s = parseInt(sEl.value); if (isNaN(s)) s = 0;
+  let e = parseInt(eEl.value); if (isNaN(e)) e = n - 1;
+  if (which === 'start' && s > e) { e = s; eEl.value = e; }
+  if (which === 'end'   && e < s) { s = e; sEl.value = s; }
+  X_START = s;
+  X_END = (e >= n - 1) ? null : e;   // parked at newest => keep following live
+  renderScoreChart();
+}
+
+function syncScoreWindowControls(n, s, e){
+  const ctrl = document.getElementById('xWindowControls');
+  const sEl = document.getElementById('xStart');
+  const eEl = document.getElementById('xEnd');
+  const out = document.getElementById('xWindowReadout');
+  if (!ctrl || !sEl || !eEl) return;
+  if (n < 2){ ctrl.style.display = 'none'; return; }
+  ctrl.style.display = 'flex';
+  sEl.max = n - 1; eEl.max = n - 1;
+  sEl.value = s; eEl.value = e;
+  if (out){
+    const a = SCORE_HISTORY[s] ? SCORE_HISTORY[s].label : '';
+    const b = SCORE_HISTORY[e] ? SCORE_HISTORY[e].label : '';
+    out.textContent = a + '  →  ' + b + '  (' + (e - s + 1) + ' of ' + n + ')';
+  }
+}
+
 function renderScoreChart() {
   const canvas = document.getElementById('scoreHistoryChart');
   if (!canvas || !SCORE_HISTORY.length) return;
-  const labels = SCORE_HISTORY.map(s => s.label);
+  const n = SCORE_HISTORY.length;
+  let winStart = Math.min(Math.max(0, X_START), n - 1);
+  let winEnd = (X_END === null) ? n - 1 : Math.min(Math.max(0, X_END), n - 1);
+  if (winStart > winEnd) winStart = winEnd;
+  const win = SCORE_HISTORY.slice(winStart, winEnd + 1);
+  syncScoreWindowControls(n, winStart, winEnd);
+  const labels = win.map(s => s.label);
   const datasets = TRACKED_NAMES.map((name, i) => ({
     label: name,
-    data: SCORE_HISTORY.map(s => s.scores[name] !== undefined ? s.scores[name] : null),
+    data: win.map(s => s.scores[name] !== undefined ? s.scores[name] : null),
     borderColor: TRACKED_COLORS[i],
     backgroundColor: TRACKED_COLORS[i] + '22',
     borderWidth: 2,
@@ -1472,7 +1520,7 @@ function renderScoreChart() {
   }));
   datasets.push({
     label: 'Cash line (top ' + Math.round(cashFraction()*100) + '%)',
-    data: SCORE_HISTORY.map(() => CASH),
+    data: win.map(() => CASH),
     borderColor: '#ef4444',
     borderWidth: 1.5,
     borderDash: [6,4],
