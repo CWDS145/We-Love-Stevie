@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.34 — 2026-07-05 — score-tracker x-axis window sliders (From/To, oldest capture -> now) -->
+<!-- We Love Stevie Dashboard v3.45 — 2026-07-09 — cash line is a time-series (per-snapshot capture), plotted as a heavy dotted line, no markers; entry markers fill green above cash / red below; field-wide round completion + in-chart round-% overlay; in-chart pill shows Early/Late round-equivalents stacked (lower left) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -221,6 +221,17 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
   <div style="position:relative;height:150px"><canvas id="roundCompleteChart"></canvas></div>
   <div style="font-size:11px;color:var(--t3);margin-top:6px">% of current round complete (avg holes thru ÷ 18 across each entry’s golfers). Needs live data.</div>
+  <div id="fieldRoundComplete" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
+</div>
+
+<!-- COURSE DIFFICULTY (v3.40) -->
+<div class="card" style="margin-bottom:16px" id="diffTrackCard">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:13px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Course difficulty — 1st half vs 2nd half of field-holes</div>
+    <span id="diffTrackInfo" style="font-size:11px;color:var(--t3)"></span>
+  </div>
+  <div id="diffTrackBody"></div>
+  <div style="font-size:11px;color:var(--t3);margin-top:8px">Field &Delta;total &divide; &Delta;thru per poll, cumulated. Player/hole/baseline-agnostic (differencing). SE assumes &sigma;=0.45 strokes/hole.</div>
 </div>
 
 <div class="config-row">
@@ -356,7 +367,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.34 (2026-07-05) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.45 (2026-07-09) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -448,7 +459,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.34 — 2026-07-05';
+const VERSION = 'v3.45 — 2026-07-09';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -528,6 +539,9 @@ function hardReset() {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('weLoveStevieDashboard_history');
+    localStorage.removeItem('weLoveStevie_waves');
+    localStorage.removeItem('weLoveStevie_diffTrack');
+    localStorage.removeItem('weLoveStevie_diffTrack_v2');
     localStorage.removeItem('weLoveStevieDashboard_cashCorr');
   } catch(e) {}
   location.reload();
@@ -1387,11 +1401,222 @@ let SCORE_HISTORY = [];
 /* ===== Round-completion bar (v3.21) — % of current round complete per tracked entry ===== */
 let roundCompleteChart = null;
 function parseThru(t){ if(t==null) return 0; const u=String(t).trim().toUpperCase(); if(u==='F'||u==='F*') return 18; const n=parseInt(u); return isNaN(n)?0:Math.min(Math.max(n,0),18); }
+/* ===== Course difficulty (v3.42) — snapshot cross-section + poll differencing ===== */
+function effectiveThru(p){
+  const t = parseThru(p.thru);
+  if (t > 0) return t;
+  // feed resets thru to 0 once a round is official; a ranked position means the player has played
+  return /\d/.test(String(p.position||'')) ? 18 : 0;
+}
+const DIFF_KEY = 'weLoveStevie_diffTrack_v2';
+let DIFF_STATE = null;
+
+function parTotal(v){
+  if (v === null || v === undefined) return NaN;
+  const u = String(v).trim().toUpperCase();
+  if (u === 'E') return 0;
+  const n = parseInt(u);
+  return isNaN(n) ? NaN : n;
+}
+function diffDayKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function loadDiffState(){
+  try { localStorage.removeItem('weLoveStevie_diffTrack'); } catch(e){}
+  let old = null;
+  try {
+    const raw = localStorage.getItem(DIFF_KEY);
+    if (raw){ const d = JSON.parse(raw);
+      if (d && d.day === diffDayKey()){ DIFF_STATE = d; if(!DIFF_STATE.base) DIFF_STATE.base = {}; return; }
+      old = d; }
+  } catch(e){}
+  DIFF_STATE = { day: diffDayKey(), prev: null, wins: [], base: {}, r1: false };
+  // carryover: yesterday's finished totals become today's baselines
+  if (old && old.prev){
+    Object.keys(old.prev).forEach(n => { if (old.prev[n][0] >= 18) DIFF_STATE.base[n] = old.prev[n][1]; });
+  }
+  saveDiffState();
+}
+function saveDiffState(){ try { localStorage.setItem(DIFF_KEY, JSON.stringify(DIFF_STATE)); } catch(e){} }
+
+function captureDifficulty(){
+  if (!DIFF_STATE || DIFF_STATE.day !== diffDayKey()) loadDiffState();
+  const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
+  if (!live.length) return;
+  const cur = {};
+  live.forEach(p => {
+    if (isCutPayloadPlayer(p)) return;
+    const t = effectiveThru(p), sc = parTotal(p.total);
+    if (!isNaN(sc)) cur[p.name] = [t, sc];
+  });
+  // baselines: any player not yet started defines their own base
+  let ns = 0, nsZero = 0;
+  Object.keys(cur).forEach(n => {
+    if (cur[n][0] === 0){ DIFF_STATE.base[n] = cur[n][1]; ns++; if (cur[n][1] === 0) nsZero++; }
+  });
+  // R1 detection (sticky): not-started players overwhelmingly at even par => all baselines are 0
+  if (!DIFF_STATE.r1 && ((ns >= 5 && nsZero / ns >= 0.8) || new Date().getDay() === 4)) DIFF_STATE.r1 = true;
+  // poll differencing (fallback path)
+  if (DIFF_STATE.prev){
+    let dH = 0, dS = 0;
+    Object.keys(cur).forEach(n => {
+      const a = DIFF_STATE.prev[n]; if (!a) return;
+      const dt = cur[n][0] - a[0];
+      if (dt <= 0) return;
+      dH += dt; dS += cur[n][1] - a[1];
+    });
+    if (dH > 0){
+      DIFF_STATE.wins.push([Date.now(), dH, dS]);
+      if (DIFF_STATE.wins.length > 3000) DIFF_STATE.wins = DIFF_STATE.wins.slice(-3000);
+    }
+  }
+  DIFF_STATE.prev = cur;
+  saveDiffState();
+}
+
+function waveKey(p){
+  // finish-order key: official (feed reset thru to 0) finished before players still showing 18,
+  // who finished before anyone on course. 19 > 18 > 17..1.
+  const t = parseThru(p.thru);
+  if (t > 0) return t;
+  return /\d/.test(String(p.position||'')) ? 19 : 0;
+}
+function crossSection(){
+  const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
+  if (!live.length || !DIFF_STATE) return null;
+  const rows = [];
+  live.forEach(p => {
+    if (isCutPayloadPlayer(p)) return;
+    const t = effectiveThru(p), sc = parTotal(p.total), k = waveKey(p);
+    if (t <= 0 || isNaN(sc)) return;
+    let b = DIFF_STATE.base[p.name];
+    if (b === undefined){ if (DIFF_STATE.r1) b = 0; else return; }
+    rows.push([t, sc - b, k, p.name]);
+  });
+  if (rows.length < 20) return null;
+  let w1 = null;
+  const keys = rows.map(r => r[2]);
+  if (Math.max.apply(null, keys) === Math.min.apply(null, keys)){
+    // all keys equal (everyone official) — recover frozen membership
+    if (!DIFF_STATE.wave) return null;
+    w1 = new Set(Object.keys(DIFF_STATE.wave).filter(n => DIFF_STATE.wave[n] === 1));
+  } else {
+    rows.sort((a,b) => b[2] - a[2]);               // earliest finishers/starters first
+    const cut = Math.floor(rows.length / 2);
+    w1 = new Set(rows.slice(0, cut).map(r => r[3]));
+    // freeze membership for end-of-day recall
+    const wv = {}; rows.forEach((r,idx) => { wv[r[3]] = idx < cut ? 1 : 2; });
+    DIFF_STATE.wave = wv; saveDiffState();
+  }
+  let H1=0,S1=0,H2=0,S2=0,n1=0,n2=0;
+  rows.forEach(r => { if (w1.has(r[3])){ H1+=r[0]; S1+=r[1]; n1++; } else { H2+=r[0]; S2+=r[1]; n2++; } });
+  if (!H1 || !H2) return null;
+  const r1=S1/H1, r2=S2/H2, se=0.45*Math.sqrt(1/H1+1/H2);
+  return { totH:H1+H2, H1, H2, r1, r2, d:r2-r1, se, mode:'snapshot', n1, n2 };
+}
+
+function diffSplit(){
+  const w = (DIFF_STATE && DIFF_STATE.wins) ? DIFF_STATE.wins : [];
+  if (!w.length) return null;
+  const totH = w.reduce((s,x)=>s+x[1],0);
+  if (totH < 40) return { totH };
+  const halfH = totH/2;
+  let cum=0, H1=0,S1=0,H2=0,S2=0;
+  w.forEach(x=>{
+    if (cum + x[1] <= halfH){ H1+=x[1]; S1+=x[2]; }
+    else if (cum >= halfH){ H2+=x[1]; S2+=x[2]; }
+    else { const a = halfH - cum, fr = a/x[1];
+      H1+=a; S1+=x[2]*fr; H2+=x[1]-a; S2+=x[2]*(1-fr); }
+    cum += x[1];
+  });
+  const r1=S1/H1, r2=S2/H2, se=0.45*Math.sqrt(1/H1+1/H2);
+  return { totH, H1, H2, r1, r2, d:r2-r1, se, mode:'polls' };
+}
+
+function verdictSplit(){
+  const xs = crossSection();
+  if (xs) return xs;
+  return diffSplit();
+}
+
+function renderDifficulty(){
+  const host = document.getElementById('diffTrackBody');
+  const info = document.getElementById('diffTrackInfo');
+  if (!host) return;
+  if (!DIFF_STATE) loadDiffState();
+  const r = verdictSplit();
+  if (!r){ host.innerHTML='<div style="font-size:11px;color:var(--t3)">Waiting for live data.</div>'; if(info)info.textContent=''; return; }
+  if (info) info.textContent = Math.round(r.totH) + ' field-holes' + (r.mode ? ' &middot; ' + (r.mode==='snapshot'?'snapshot (all holes today)':'poll differencing') : '');
+  if (!r.H1){ host.innerHTML='<div style="font-size:11px;color:var(--t3)">Accumulating — poll-diff verdict at 40+ field-holes.</div>'; return; }
+  const f=v=>(v>=0?'+':'')+v.toFixed(3);
+  const fr=v=>(v>=0?'+':'')+(v*18).toFixed(2);
+  const t=Math.abs(r.d/r.se);
+  const dir=r.d>0?'LATE HALF playing HARDER':'LATE HALF playing EASIER';
+  const col=r.d>0?'var(--red)':'var(--green)';
+  const sig=t>=2?('diff = '+t.toFixed(1)+' SE'):'within noise ('+t.toFixed(1)+' SE)';
+  const l1 = r.mode==='snapshot' ? 'Early wave' : '1st half';
+  const l2 = r.mode==='snapshot' ? 'Late wave' : '2nd half';
+  const c1 = r.mode==='snapshot' && r.n1 ? ' (n='+r.n1+')' : '';
+  const c2 = r.mode==='snapshot' && r.n2 ? ' (n='+r.n2+')' : '';
+  host.innerHTML=
+    '<table style="width:100%;font-size:12px;font-family:var(--mono);border-collapse:collapse">'+
+    '<tr style="color:var(--t3);font-size:11px"><td style="padding:3px 6px">Segment</td><td style="padding:3px 6px;text-align:right">Holes</td><td style="padding:3px 6px;text-align:right">To-par / hole</td><td style="padding:3px 6px;text-align:right">Round-equiv</td></tr>'+
+    '<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--amber-t)">'+l1+c1+'</td><td style="padding:4px 6px;text-align:right;color:var(--t2)">'+Math.round(r.H1)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+f(r.r1)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+fr(r.r1)+'</td></tr>'+
+    '<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--blue)">'+l2+c2+'</td><td style="padding:4px 6px;text-align:right;color:var(--t2)">'+Math.round(r.H2)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+f(r.r2)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+fr(r.r2)+'</td></tr>'+
+    '</table>'+
+    '<div style="margin-top:8px;font-size:12px"><span style="color:'+col+';font-weight:600">'+dir+' by '+Math.abs(r.d*18).toFixed(2)+' strokes/round</span> <span style="color:var(--t3)">&plusmn; '+(r.se*18).toFixed(2)+' &middot; '+sig+'</span></div>';
+}
+
+function isCutPayloadPlayer(p){
+  const pos = (p.position||'').toUpperCase();
+  const st  = (p.status||'').toUpperCase();
+  return pos==='CUT'||pos==='MC'||pos==='MDF'||pos==='WD'||st==='CUT'||st==='WD'||st==='WITHDRAWN';
+}
+function computeFieldRoundComplete(){
+  const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
+  const active = live.filter(p => !isCutPayloadPlayer(p));
+  if (!active.length) return null;
+  let holes = 0, finished = 0, notStarted = 0;
+  active.forEach(p => {
+    const t = effectiveThru(p);
+    holes += t;
+    if (t >= 18) finished++;
+    else if (t === 0) notStarted++;
+  });
+  return {
+    pct: Math.round(holes / (active.length * 18) * 1000) / 10,
+    holes, active: active.length, finished, notStarted,
+    inPlay: active.length - finished - notStarted,
+    cut: live.length - active.length
+  };
+}
+function renderFieldRoundComplete(){
+  const host = document.getElementById('fieldRoundComplete');
+  if (!host) return;
+  const f = computeFieldRoundComplete();
+  if (!f){ host.innerHTML = '<div style="font-size:11px;color:var(--t3)">Field completion — no live data</div>'; return; }
+  host.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">' +
+      '<div style="font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Field completion — all active players</div>' +
+      '<div style="font-family:var(--mono);font-size:18px;color:var(--green)">' + f.pct.toFixed(1) + '%</div>' +
+    '</div>' +
+    '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">' +
+      '<div style="height:100%;width:' + f.pct + '%;background:var(--green);border-radius:4px"></div>' +
+    '</div>' +
+    '<div style="font-size:11px;color:var(--t3);margin-top:6px;font-family:var(--mono)">' +
+      f.holes + ' / ' + (f.active * 18) + ' holes &middot; ' +
+      f.active + ' active (' + f.finished + ' done, ' + f.inPlay + ' on course, ' + f.notStarted + ' not started)' +
+      (f.cut ? ' &middot; ' + f.cut + ' cut/WD excluded' : '') +
+    '</div>';
+}
+
 function renderRoundComplete(){
+  renderFieldRoundComplete();
+  captureDifficulty();
+  renderDifficulty();
+  if (scoreChart) scoreChart.update('none');
   const canvas=document.getElementById('roundCompleteChart'); if(!canvas) return;
   const info=document.getElementById('roundCompleteInfo');
   const live=(LIVE_LAST_PAYLOAD&&LIVE_LAST_PAYLOAD.players)?LIVE_LAST_PAYLOAD.players:[];
-  const thruByName={}; live.forEach(p=>{ thruByName[normalizePlayerName(p.name)]=parseThru(p.thru); });
+  const thruByName={}; live.forEach(p=>{ thruByName[normalizePlayerName(p.name)]=effectiveThru(p); });
   const SHORT={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
   const labels=[],vals=[],colors=[];
   TRACKED_NAMES.forEach((nm,i)=>{
@@ -1433,7 +1658,7 @@ function recordScoreSnapshot() {
     const m = ENTRIES.find(x => x.n.toLowerCase().includes(name.toLowerCase()));
     scores[name] = m ? m.p : null;
   });
-  SCORE_HISTORY.push({time:now, label, scores});
+  SCORE_HISTORY.push({time:now, label, scores, cash:CASH});
   try { localStorage.setItem(HIST_KEY, JSON.stringify(SCORE_HISTORY)); } catch(e) {}
   renderScoreChart();
   updateScoreHistoryInfo();
@@ -1507,6 +1732,13 @@ function renderScoreChart() {
   const win = SCORE_HISTORY.slice(winStart, winEnd + 1);
   syncScoreWindowControls(n, winStart, winEnd);
   const labels = win.map(s => s.label);
+  const cashSeries = win.map(s => (typeof s.cash === 'number' && s.cash > 0) ? s.cash : CASH);
+  const markerFill = (ctx) => {
+    const v = ctx.raw;
+    const c = cashSeries[ctx.dataIndex];
+    if (v === null || v === undefined || typeof c !== 'number' || !c) return '#5c6478';
+    return v >= c ? '#22c55e' : '#ef4444';
+  };
   const datasets = TRACKED_NAMES.map((name, i) => ({
     label: name,
     data: win.map(s => s.scores[name] !== undefined ? s.scores[name] : null),
@@ -1515,22 +1747,75 @@ function renderScoreChart() {
     borderWidth: 2,
     pointRadius: 4,
     pointHoverRadius: 6,
+    pointBorderColor: TRACKED_COLORS[i],
+    pointBorderWidth: 2,
+    pointBackgroundColor: markerFill,
+    pointHoverBackgroundColor: markerFill,
     tension: 0.3,
     spanGaps: true
   }));
   datasets.push({
     label: 'Cash line (top ' + Math.round(cashFraction()*100) + '%)',
-    data: win.map(() => CASH),
+    data: cashSeries,
     borderColor: '#ef4444',
-    borderWidth: 1.5,
-    borderDash: [6,4],
+    backgroundColor: '#ef444422',
+    borderWidth: 4,
+    borderDash: [2,5],
+    borderCapStyle: 'round',
     pointRadius: 0,
+    pointHoverRadius: 0,
     tension: 0,
+    spanGaps: true,
     fill: false
   });
   if (scoreChart) scoreChart.destroy();
+  const roundPctOverlay = {
+    id: 'rcOverlay',
+    afterDraw(ch){
+      const f = (typeof computeFieldRoundComplete === 'function') ? computeFieldRoundComplete() : null;
+      if (!f) return;
+      const a = ch.chartArea, c = ch.ctx;
+      const txt = f.pct.toFixed(1) + '% round complete';
+      c.save();
+      c.font = '600 12px "DM Sans"';
+      const w = c.measureText(txt).width;
+      const padX = 8, padY = 5, bx = a.right - w - padX*2 - 6, by = a.bottom - 24 - 6;
+      c.fillStyle = 'rgba(20,24,33,.82)';
+      c.strokeStyle = 'rgba(34,197,94,.45)';
+      c.lineWidth = 1;
+      c.beginPath();
+      if (typeof c.roundRect === 'function') c.roundRect(bx, by, w + padX*2, 24, 5);
+      else c.rect(bx, by, w + padX*2, 24);
+      c.fill(); c.stroke();
+      c.fillStyle = '#22c55e';
+      c.textBaseline = 'middle';
+      c.fillText(txt, bx + padX, by + 12);
+      const r = (typeof verdictSplit === 'function') ? verdictSplit() : null;
+      if (r && r.H1){
+        const harder = r.d > 0;
+        const fre = v => (v >= 0 ? '+' : '') + (v*18).toFixed(2);
+        const l1 = 'Early ' + fre(r.r1);
+        const l2 = 'Late  ' + fre(r.r2) + (Math.abs(r.d/r.se) < 2 ? ' (noise)' : '');
+        const col2 = harder ? '#ef4444' : '#22c55e';
+        const w2 = Math.max(c.measureText(l1).width, c.measureText(l2).width);
+        const bh = 40, bx2 = a.left + 6, by2 = a.bottom - bh - 6;
+        c.fillStyle = 'rgba(20,24,33,.82)';
+        c.strokeStyle = harder ? 'rgba(239,68,68,.45)' : 'rgba(34,197,94,.45)';
+        c.beginPath();
+        if (typeof c.roundRect === 'function') c.roundRect(bx2, by2, w2 + padX*2, bh, 5);
+        else c.rect(bx2, by2, w2 + padX*2, bh);
+        c.fill(); c.stroke();
+        c.fillStyle = '#9ca3b4';
+        c.fillText(l1, bx2 + padX, by2 + 12);
+        c.fillStyle = col2;
+        c.fillText(l2, bx2 + padX, by2 + 28);
+      }
+      c.restore();
+    }
+  };
   scoreChart = new Chart(canvas, {
     type: 'line',
+    plugins: [roundPctOverlay],
     data: { labels, datasets },
     options: {
       responsive: true,
