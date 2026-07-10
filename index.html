@@ -1403,10 +1403,12 @@ let roundCompleteChart = null;
 function parseThru(t){ if(t==null) return 0; const u=String(t).trim().toUpperCase(); if(u==='F'||u==='F*') return 18; const n=parseInt(u); return isNaN(n)?0:Math.min(Math.max(n,0),18); }
 /* ===== Course difficulty (v3.42) — snapshot cross-section + poll differencing ===== */
 function effectiveThru(p){
-  const t = parseThru(p.thru);
-  if (t > 0) return t;
-  // feed resets thru to 0 once a round is official; a ranked position means the player has played
-  return /\d/.test(String(p.position||'')) ? 18 : 0;
+  // strip asterisk; F => 18; tee time (h:mm AM/PM) or 0 => 0; number => holes played
+  const v = String(p && p.thru != null ? p.thru : '').replace(/\*/g,'').trim();
+  if (/^F$/i.test(v)) return 18;
+  if (/\d{1,2}:\d{2}\s*[AP]M/i.test(v)) return 0;
+  const n = parseInt(v, 10);
+  return Number.isNaN(n) ? 0 : n;
 }
 const DIFF_KEY = 'weLoveStevie_diffTrack_v2';
 let DIFF_STATE = null;
@@ -1572,7 +1574,7 @@ function isCutPayloadPlayer(p){
 }
 function computeFieldRoundComplete(){
   const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
-  const active = live.filter(p => !isCutPayloadPlayer(p));
+  const active = live.filter(p => p && p.name && p.name !== 'undefined' && !isCutPlayer(p));
   if (!active.length) return null;
   let holes = 0, finished = 0, notStarted = 0;
   active.forEach(p => {
