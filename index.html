@@ -1405,8 +1405,7 @@ function parseThru(t){ if(t==null) return 0; const u=String(t).trim().toUpperCas
 l1580
           l1582
                     l1580
-                              (p){
-  // strip asterisk; F => 18; tee time (h:mm AM/PM) or 0 => 0; number => holes played
+                            (p) => {  // strip asterisk; F => 18; tee time (h:mm AM/PM) or 0 => 0; number => holes played
   const v = String(p && p.thru != null ? p.thru : '').replace(/\*/g,'').trim();
   if (/^F$/i.test(v)) return 18;
   if (/\d{1,2}:\d{2}\s*[AP]M/i.test(v)) return 0;
