@@ -966,7 +966,27 @@ function renderFieldTable() {
 }
  
 let sCompChart = null, sScatterChart = null;
- 
+
+// Robust x-domain for the holes-remaining scatters. Cut-heavy lineups sit far
+// below the field's holes-remaining median and, via raw min/max, stretch the
+// axis so the real cloud collapses to a sliver. Reject those via MAD (k=3.5,
+// IQR fallback) and pin the domain to the clean field so outliers can't compress
+// the chart. isOut(h) lets callers drop outlier field points from the cloud.
+function holesDomain(vals){
+  const xs = vals.filter(v => typeof v === 'number' && isFinite(v)).slice().sort((a,b)=>a-b);
+  const n = xs.length;
+  if (!n) return { min:0, max:1, isOut:()=>false };
+  const q = p => { const i=(n-1)*p, l=Math.floor(i), h=Math.ceil(i); return xs[l]+(xs[h]-xs[l])*(i-l); };
+  const med = q(0.5);
+  const mad = xs.map(v=>Math.abs(v-med)).sort((a,b)=>a-b)[Math.floor(n/2)];
+  let isOut;
+  if (mad > 0){ const s = 1.4826*mad, k = 3.5; isOut = v => Math.abs(v-med) > k*s; }
+  else { const iqr = q(0.75)-q(0.25), k = 1.5; isOut = iqr>0 ? (v => v < q(0.25)-k*iqr || v > q(0.75)+k*iqr) : (()=>false); }
+  const clean = xs.filter(v => !isOut(v));
+  const base = clean.length ? clean : xs;
+  return { min: Math.min(...base), max: Math.max(...base), isOut };
+}
+
 function renderSingle(entry) {
   currentSingleEntry = entry;
   document.getElementById('singleDash').classList.remove('hidden');
@@ -1037,8 +1057,11 @@ function renderSingle(entry) {
   };
   const cohortBuckets = {};
   const sel = [];
+  const HD = holesDomain(ENTRIES.map(e=>e.h));
+  const clampX = h => Math.min(HD.max, Math.max(HD.min, h));
   ENTRIES.forEach(x => {
-    if (x.n===entry.n && x.r===entry.r) { sel.push({x:x.h,y:x.p}); return; }
+    if (x.n===entry.n && x.r===entry.r) { sel.push({x:clampX(x.h),y:x.p}); return; }
+    if (HD.isOut(x.h)) return;   // drop cut-heavy outliers from the field cloud
     const lbl = cohortLabel(x.h);
     if (!cohortBuckets[lbl]) cohortBuckets[lbl] = { color: cohortColor(x.h), data: [] };
     cohortBuckets[lbl].data.push({x:x.h, y:x.p});
@@ -1060,7 +1083,7 @@ function renderSingle(entry) {
     if (match && !(match.n===entry.n && match.r===entry.r)) {
       datasets.push({
         label: tn,
-        data: [{x: match.h, y: match.p}],
+        data: [{x: clampX(match.h), y: match.p}],
         backgroundColor: TRACKED_COLORS[ti],
         borderColor: '#000000',
         borderWidth: 2,
@@ -1071,9 +1094,9 @@ function renderSingle(entry) {
     }
   });
   const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
-  const xMaxRaw = Math.max(...ENTRIES.map(e=>e.h));
-  const xMax = xMaxRaw + Math.max(1, Math.round(xMaxRaw*0.1));
-  const xMin = Math.max(0, Math.min(...ENTRIES.map(e=>e.h)) - 1);
+  const xPad = Math.max(1, Math.round((HD.max-HD.min)*0.05));
+  const xMax = HD.max + xPad;
+  const xMin = Math.max(0, HD.min - xPad);
   sScatterChart = new Chart(ctx2, {type:'scatter',data:{datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:xMin,max:xMax,reverse:true,ticks:{color:'#5c6478',stepSize:1},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl4s',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.8)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.left+6,y-6);c.restore();}}]});
   const ac = document.getElementById('sAnalysis');
   if (inCashByPower) ac.innerHTML = '<div class="callout callout-green"><b>Projected to cash.</b> Power Rank #' + pr + ' of ' + TOTAL + ' (top ' + Math.round(pr/TOTAL*100) + '%).</div>';
@@ -1188,8 +1211,11 @@ function renderCompare() {
     if (h >= 72)  return '72';
     return '0-71';
   };
+  const HD = holesDomain(ENTRIES.map(e=>e.h));
+  const clampX = h => Math.min(HD.max, Math.max(HD.min, h));
   const cmpCohorts = {};
   ENTRIES.forEach(x => {
+    if (HD.isOut(x.h)) return;   // drop cut-heavy outliers from the field cloud
     const lbl = cohortLabelC(x.h);
     if (!cmpCohorts[lbl]) cmpCohorts[lbl] = { color: cohortColorC(x.h), data: [] };
     cmpCohorts[lbl].data.push({x:x.h, y:x.p});
@@ -1205,11 +1231,11 @@ function renderCompare() {
     pointStyle: 'circle',
     order: 10
   }));
-  cmpEntries.forEach((e,i) => { ds.push({label:e.n,data:[{x:e.h,y:e.p}],backgroundColor:COLORS[i],borderColor:'#000000',borderWidth:2.5,pointRadius:12,pointStyle:'circle',order:1}); });
+  cmpEntries.forEach((e,i) => { ds.push({label:e.n,data:[{x:clampX(e.h),y:e.p}],backgroundColor:COLORS[i],borderColor:'#000000',borderWidth:2.5,pointRadius:12,pointStyle:'circle',order:1}); });
   const yMax = Math.max(...ENTRIES.map(e=>e.p))+20;
-  const xMaxRaw = Math.max(...ENTRIES.map(e=>e.h));
-  const xMax = xMaxRaw + Math.max(1, Math.round(xMaxRaw*0.1));
-  const xMin = Math.max(0, Math.min(...ENTRIES.map(e=>e.h)) - 1);
+  const xPad = Math.max(1, Math.round((HD.max-HD.min)*0.05));
+  const xMax = HD.max + xPad;
+  const xMin = Math.max(0, HD.min - xPad);
   cmpScatterChart = new Chart(ctx, {type:'scatter',data:{datasets:ds},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{color:'#9ca3b4',font:{size:11}}}},scales:{x:{title:{display:true,text:'Holes remaining',color:'#5c6478',font:{size:11}},min:xMin,max:xMax,reverse:true,ticks:{color:'#5c6478',stepSize:1},grid:{color:'#1a1f2a'}},y:{title:{display:true,text:'Points',color:'#5c6478',font:{size:11}},min:0,max:yMax,ticks:{color:'#5c6478'},grid:{color:c=>c.tick.value===CASH?'rgba(239,68,68,.35)':'#1a1f2a'}}}},plugins:[{id:'cl4',afterDraw(ch){const y=ch.scales.y.getPixelForValue(CASH),c=ch.ctx;c.save();c.setLineDash([6,4]);c.strokeStyle='rgba(239,68,68,.5)';c.lineWidth=1.5;c.beginPath();c.moveTo(ch.chartArea.left,y);c.lineTo(ch.chartArea.right,y);c.stroke();c.fillStyle='rgba(239,68,68,.8)';c.font='600 11px "DM Sans"';c.fillText('Cash: '+CASH,ch.chartArea.left+6,y-6);c.restore();}}]});
   const ctx2 = document.getElementById('cmpOddsChart');
   if (cmpOddsChart) cmpOddsChart.destroy();
