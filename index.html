@@ -1574,7 +1574,7 @@ function isCutPayloadPlayer(p){
 }
 function computeFieldRoundComplete(){
   const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
-  const active = live.filter(p => p && p.name && p.name !== 'undefined' && !isPlayerCut(p));
+  const active = live.filter(p => p && p.name && p.name !== 'undefined' && !isCutPayloadPlayer(p));
   if (!active.length) return null;
   let holes = 0, finished = 0, notStarted = 0;
   active.forEach(p => {
