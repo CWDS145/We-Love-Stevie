@@ -1402,10 +1402,8 @@ let SCORE_HISTORY = [];
 let roundCompleteChart = null;
 function parseThru(t){ if(t==null) return 0; const u=String(t).trim().toUpperCase(); if(u==='F'||u==='F*') return 18; const n=parseInt(u); return isNaN(n)?0:Math.min(Math.max(n,0),18); }
 /* ===== Course difficulty (v3.42) — snapshot cross-section + poll differencing ===== */
-l1580
-          l1582
-                    l1580
-                            (p) => {  // strip asterisk; F => 18; tee time (h:mm AM/PM) or 0 => 0; number => holes played
+function effectiveThru(p){
+  // strip asterisk; F => 18; tee time (h:mm AM/PM) or 0 => 0; number => holes played
   const v = String(p && p.thru != null ? p.thru : '').replace(/\*/g,'').trim();
   if (/^F$/i.test(v)) return 18;
   if (/\d{1,2}:\d{2}\s*[AP]M/i.test(v)) return 0;
@@ -1487,8 +1485,7 @@ function crossSection(){
   const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
   if (!live.length || !DIFF_STATE) return null;
   const rows = [];
-  l1620
-            => {
+  live.forEach(p => {
     if (isCutPayloadPlayer(p)) return;
     const t = effectiveThru(p), sc = parTotal(p.total), k = waveKey(p);
     if (t <= 0 || isNaN(sc)) return;
@@ -1575,9 +1572,7 @@ function isCutPayloadPlayer(p){
   const st  = (p.status||'').toUpperCase();
   return pos==='CUT'||pos==='MC'||pos==='MDF'||pos==='WD'||st==='CUT'||st==='WD'||st==='WITHDRAWN';
 }
-l1405
-          l1586
-                    (){
+function computeFieldRoundComplete(){
   const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
   const active = live.filter(p => p && p.name && p.name !== 'undefined' && !isPlayerCut(p));
   if (!active.length) return null;
@@ -1615,8 +1610,7 @@ function renderFieldRoundComplete(){
     '</div>';
 }
 
-l1630
-          hfunction renderRoundComplete(){
+function renderRoundComplete(){
   renderFieldRoundComplete();
   captureDifficulty();
   renderDifficulty();
@@ -1624,8 +1618,7 @@ l1630
   const canvas=document.getElementById('roundCompleteChart'); if(!canvas) return;
   const info=document.getElementById('roundCompleteInfo');
   const live=(LIVE_LAST_PAYLOAD&&LIVE_LAST_PAYLOAD.players)?LIVE_LAST_PAYLOAD.players:[];
-  const thruByName={}; l1625
-            (p=>{ thruByName[normalizePlayerName(p.name)]=effectiveThru(p); });
+  const thruByName={}; live.forEach(p=>{ thruByName[normalizePlayerName(p.name)]=effectiveThru(p); });
   const SHORT={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
   const labels=[],vals=[],colors=[];
   TRACKED_NAMES.forEach((nm,i)=>{
