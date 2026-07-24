@@ -1579,7 +1579,7 @@ function computeFieldRoundComplete(){
   let holes = 0, finished = 0, notStarted = 0;
   active.forEach(p => {
     const t = effectiveThru(p);
-    holes += (/^F/i.test(p.status)) ? 18 : t;
+    holes += t;
     if (t >= 18) finished++;
     else if (t === 0) notStarted++;
   });
