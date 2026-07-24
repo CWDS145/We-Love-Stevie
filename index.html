@@ -1475,8 +1475,12 @@ function captureDifficulty(){
 }
 
 function waveKey(p){
-  // finish-order key: official (feed reset thru to 0) finished before players still showing 18,
-  // who finished before anyone on course. 19 > 18 > 17..1.
+  // finish-order key: back-nine starters (raw feed shows 'F*') finished before
+  // front-nine finishers ('F' => thru 18), who finished before anyone on course.
+  // 19 > 18 > 17..1. Proxy v1.2 now returns thru=18 for both waves, so read the
+  // asterisk from thruDisplay to keep the two tee-waves apart (front vs back nine).
+  const disp = String(p.thruDisplay != null ? p.thruDisplay : (p.thru != null ? p.thru : '')).trim();
+  if (disp.indexOf('*') !== -1) return /\d/.test(String(p.position||'')) ? 19 : 0;
   const t = parseThru(p.thru);
   if (t > 0) return t;
   return /\d/.test(String(p.position||'')) ? 19 : 0;
