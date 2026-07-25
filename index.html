@@ -1764,7 +1764,11 @@ function renderScoreChart() {
   const win = SCORE_HISTORY.slice(winStart, winEnd + 1);
   syncScoreWindowControls(n, winStart, winEnd);
   const labels = win.map(s => s.label);
-  const cashSeries = win.map(s => (typeof s.cash === 'number' && s.cash > 0) ? s.cash : CASH);
+  // Manual override is the authoritative current cash line — it wins over every
+  // snapshot's frozen auto value, so the plotted line + marker coloring honor it.
+  const cashSeries = win.map(s => (CASH_OVERRIDE !== null && CASH_OVERRIDE > 0)
+    ? CASH_OVERRIDE
+    : ((typeof s.cash === 'number' && s.cash > 0) ? s.cash : CASH));
   const markerFill = (ctx) => {
     const v = ctx.raw;
     const c = cashSeries[ctx.dataIndex];
