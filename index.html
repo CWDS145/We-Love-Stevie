@@ -2471,7 +2471,7 @@ function resetForNextTournament() {
     }).join('');
   }
 
-  var halfLine = {
+  var mcValueLabels={id:'mcValueLabels',afterDatasetsDraw:function(chart){var yScale=chart.scales.y;if(!yScale)return;var ctx=chart.ctx,area=chart.chartArea;ctx.save();ctx.font='700 10px "JetBrains Mono", monospace';ctx.textBaseline='middle';ctx.textAlign='center';var n=(chart.data.labels||[]).length;for(var xi=0;xi<n;xi++){var pts=[];chart.data.datasets.forEach(function(ds,di){var meta=chart.getDatasetMeta(di);if(meta.hidden)return;var val=ds.data[xi];var pe=meta.data[xi];if(val===null||val===undefined||!pe)return;pts.push({val:val,x:pe.x,y:pe.y,color:ds.borderColor||'#e8eaf0'});});if(!pts.length)continue;pts.sort(function(a,b){return a.y-b.y;});pts.forEach(function(p,idx){var above=idx%2===0;var text=p.val.toFixed(1)+'%';var tw=ctx.measureText(text).width;var padX=4,boxH=13;var textY=above?(p.y-11):(p.y+11);if(textY-boxH/2<area.top)textY=area.top+boxH/2+1;if(textY+boxH/2>area.bottom)textY=area.bottom-boxH/2-1;var boxX=p.x-tw/2-padX;if(boxX<area.left)boxX=area.left;if(boxX+tw+padX*2>area.right)boxX=area.right-tw-padX*2;var textX=boxX+padX+tw/2;ctx.fillStyle='rgba(10,13,20,.82)';ctx.strokeStyle=p.color+'55';ctx.lineWidth=1;ctx.beginPath();if(typeof ctx.roundRect==='function')ctx.roundRect(boxX,textY-boxH/2,tw+padX*2,boxH,4);else ctx.rect(boxX,textY-boxH/2,tw+padX*2,boxH);ctx.fill();ctx.stroke();ctx.fillStyle=p.color;ctx.fillText(text,textX,textY);});}ctx.restore();}}; var halfLine = {
     id: 'cl5',
     afterDatasetsDraw: function(chart){
       var y=chart.scales.y, xa=chart.scales.x; if (!y||!xa) return;
@@ -2494,7 +2494,7 @@ function resetForNextTournament() {
     });
     if (mcChart){ mcChart.destroy(); mcChart=null; }
     mcChart = new Chart(canvas, {
-      type:'line', plugins:[halfLine],
+      type:'line', plugins:[halfLine, mcValueLabels],
       data:{ labels:sh.labels, datasets:datasets },
       options:{
         responsive:true, maintainAspectRatio:false, animation:false,
