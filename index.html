@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.46 — 2026-07-26 — cash line is a time-series (per-snapshot capture), plotted as a heavy dotted line, no markers; entry markers fill green above cash / red below; field-wide round completion + in-chart round-% overlay; in-chart pill shows Early/Late round-equivalents stacked (lower left) -->
+<!-- We Love Stevie Dashboard v3.47 — 2026-07-26 — cash line is a time-series (per-snapshot capture), plotted as a heavy dotted line, no markers; entry markers fill green above cash / red below; field-wide round completion + in-chart round-% overlay; in-chart pill shows Early/Late round-equivalents stacked (lower left) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -134,6 +134,18 @@ body::before{content:'';position:fixed;top:0;left:0;width:100%;height:100%;backg
 .save-actions .confirm{padding:9px 22px;background:var(--orange);color:#fff;border:none;border-radius:var(--r);font-size:13px;font-weight:700;cursor:pointer;font-family:var(--font)}
 .save-actions .confirm:hover{opacity:.9}
 .save-actions .confirm:disabled{opacity:.5;cursor:not-allowed}
+/* Monte Carlo panel */
+.mc-pill{font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:999px;font-family:var(--mono);white-space:nowrap}
+.mc-live{background:var(--green-bg);color:var(--green);border:1px solid var(--green)}
+.mc-stale{background:var(--amber-bg);color:var(--amber-t);border:1px solid var(--amber)}
+.mc-off{background:rgba(148,163,184,.12);color:#94a3b8;border:1px solid #475569}
+.mc-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-family:var(--mono);margin-right:12px;white-space:nowrap}
+.mc-chip i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.mc-tip{position:relative;display:inline-block;cursor:help;color:var(--t3);font-size:12px;line-height:1}
+.mc-tip .mc-tip-box{visibility:hidden;opacity:0;transition:opacity .12s;position:absolute;z-index:60;top:calc(100% + 8px);left:0;width:520px;max-width:78vw;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--r);padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.mc-tip:hover .mc-tip-box,.mc-tip:focus .mc-tip-box{visibility:visible;opacity:1}
+.mc-tip b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--t1);margin-bottom:6px}
+.mc-tip pre{margin:0;font-family:var(--mono);font-size:11px;line-height:1.55;white-space:pre-wrap;word-break:break-word;color:var(--t2)}
 </style>
 </head>
 <body>
@@ -211,6 +223,25 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
     <span id="xWindowReadout" style="font-size:11px;color:var(--t2);font-family:var(--mono);white-space:nowrap"></span>
   </div>
   <div style="font-size:11px;color:var(--t3);margin-top:6px">Updated on each CSV upload. Resets every Sunday.</div>
+</div>
+
+<!-- MONTE CARLO — LIVE CASH % -->
+<div class="card" style="margin-bottom:16px" id="mcCard">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:13px;font-weight:700">Monte Carlo — live cash %</div>
+      <span class="mc-tip" tabindex="0">&#9432;<span class="mc-tip-box"><b>How to start on M2</b><pre>1. wsl → tmux new -s dkwatch
+2. cd "/mnt/d/2026 Golf/research"
+3. python3 -m slate_console.engine.watch_dk --contest &lt;ID&gt; --paid &lt;SPOTS&gt;
+4. Ctrl+b d to detach. DK exports drop into ALL DK DATA every ~10 min.
+5. CSV server: systemd unit wls-ts (auto-starts). This panel reads
+   manoai-1.tail56cd31.ts.net:8782 — viewer must be on the tailnet.</pre></span></span>
+    </div>
+    <span id="mcPill" class="mc-pill mc-off">offline</span>
+  </div>
+  <div style="position:relative;height:260px"><canvas id="mcChart"></canvas></div>
+  <div id="mcReadout" style="margin-top:8px;min-height:16px"></div>
+  <div style="font-size:11px;color:var(--t3);margin-top:6px">P(cash) per tracked entry from the local Monte Carlo engine · last 2 hours · tailnet only.</div>
 </div>
 
 <!-- ROUND COMPLETION CHART (v3.21) -->
@@ -367,7 +398,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.46 (2026-07-26) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.47 (2026-07-26) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -459,7 +490,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.46 — 2026-07-26';
+const VERSION = 'v3.47 — 2026-07-26';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -2367,6 +2398,162 @@ function resetForNextTournament() {
   btn.addEventListener('click', pollOnce);
   pollOnce();
   setInterval(pollOnce, POLL_MS);
+})();
+</script>
+
+<!-- Monte Carlo — live cash %. Self-contained: every fetch is wrapped, so an
+     unreachable endpoint only shows an offline pill and touches nothing else. -->
+<script>
+(function(){
+  'use strict';
+  var TS_BASE='https://manoai-1.tail56cd31.ts.net:8782';
+  var POLL_MC_MS=120000;            // own timer; NOT the 8781 bridge poll
+  var WINDOW_MS=2*60*60*1000;       // trailing 2h, relative to the newest row
+  var STALE_MS=30*60*1000;
+  var FALLBACK_COLORS=['#3b82f6','#a855f7','#14b8a6','#f59e0b','#ef4444','#22c55e','#e879f9','#38bdf8'];
+  var SHORT_MC={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
+  var mcChart=null, lastUtc=null, busy=false, lastRows=0;
+
+  function el(id){ return document.getElementById(id); }
+  function names(){ return (typeof TRACKED_NAMES!=='undefined'&&TRACKED_NAMES)?TRACKED_NAMES:[]; }
+  function palette(){ return (typeof TRACKED_COLORS!=='undefined'&&TRACKED_COLORS)?TRACKED_COLORS:FALLBACK_COLORS; }
+
+  function parseUtc(v){
+    var m=/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(String(v||'').trim());
+    if (m) return Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);
+    var t=Date.parse(v); return isNaN(t)?NaN:t;
+  }
+  function hhmm(ms){ var d=new Date(ms); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  function colorFor(a,idx){ var i=names().indexOf(a), pal=palette(); return (i>=0&&pal[i])?pal[i]:FALLBACK_COLORS[idx%FALLBACK_COLORS.length]; }
+  function labelFor(a){ return SHORT_MC[a]||a; }
+
+  function setPill(kind,text){
+    var p=el('mcPill'); if (!p) return;
+    p.className='mc-pill '+(kind==='live'?'mc-live':kind==='stale'?'mc-stale':'mc-off');
+    p.textContent=text;
+  }
+
+  /* rows -> {labels, series[], stamps[]} : newest contest only, trailing 2h. */
+  function shape(rows){
+    var clean = [];
+    (rows||[]).forEach(function(r){
+      if (!r) return;
+      var t=parseUtc(r.utc), p=parseFloat(r.p_cash);
+      if (isNaN(t)||isNaN(p)||!r.alias) return;
+      clean.push({t:t, alias:String(r.alias).trim(), p:p*100, contest:String(r.contest==null?'':r.contest).trim()});
+    });
+    if (!clean.length) return { labels:[], series:[], stamps:[], maxT:NaN, contest:null };
+    var maxT=-Infinity, contest=null;
+    clean.forEach(function(x){ if (x.t>maxT){ maxT=x.t; contest=x.contest; } });
+    var keep = clean.filter(function(x){ return x.contest===contest && x.t>=maxT-WINDOW_MS; });
+    var stamps=[], seen={};
+    keep.forEach(function(x){ if (!seen[x.t]){ seen[x.t]=1; stamps.push(x.t); } });
+    stamps.sort(function(a,b){ return a-b; });
+    var idxOf={}; stamps.forEach(function(t,i){ idxOf[t]=i; });
+    var order=[], has={};
+    names().forEach(function(n){ if (keep.some(function(x){ return x.alias===n; })){ order.push(n); has[n]=1; } });
+    keep.forEach(function(x){ if (!has[x.alias]){ has[x.alias]=1; order.push(x.alias); } });
+    var series = order.map(function(a,i){
+      var data = stamps.map(function(){ return null; }), latest = null;
+      keep.forEach(function(x){ if (x.alias===a) data[idxOf[x.t]]=x.p; });
+      for (var k=data.length-1; k>=0; k--) if (data[k]!==null){ latest=data[k]; break; }
+      return { alias:a, label:labelFor(a), color:colorFor(a,i), data:data, latest:latest };
+    });
+    return { labels:stamps.map(hhmm), series:series, stamps:stamps, maxT:maxT, contest:contest };
+  }
+
+  function readout(sh){
+    var host=el('mcReadout'); if (!host) return;
+    if (!sh.series.length){ host.innerHTML='<span style="font-size:11px;color:var(--t3)">No Monte Carlo data</span>'; return; }
+    host.innerHTML=sh.series.map(function(s){
+      return '<span class="mc-chip"><i style="background:'+s.color+'"></i>'+s.label+' '+
+             (s.latest===null?'\u2014':s.latest.toFixed(1)+'%')+'</span>';
+    }).join('');
+  }
+
+  var halfLine = {
+    id: 'cl5',
+    afterDatasetsDraw: function(chart){
+      var y=chart.scales.y, xa=chart.scales.x; if (!y||!xa) return;
+      var py=y.getPixelForValue(50), c=chart.ctx;
+      c.save();
+      c.setLineDash([5,4]); c.lineWidth=1; c.strokeStyle='rgba(148,163,184,.55)';
+      c.beginPath(); c.moveTo(xa.left,py); c.lineTo(xa.right,py); c.stroke(); c.setLineDash([]);
+      c.fillStyle='rgba(148,163,184,.85)'; c.font='10px monospace'; c.textAlign='left';
+      c.fillText('50%', xa.left+4, py-4);
+      c.restore();
+    }
+  };
+
+  function render(sh){
+    readout(sh);
+    var canvas=el('mcChart'); if (!canvas||typeof Chart==='undefined') return;
+    var datasets=sh.series.map(function(s){
+      return { label:s.label, data:s.data, borderColor:s.color, backgroundColor:s.color+'22',
+               borderWidth:2, pointRadius:3, pointHoverRadius:5, tension:.3, spanGaps:true, fill:false };
+    });
+    if (mcChart){ mcChart.destroy(); mcChart=null; }
+    mcChart = new Chart(canvas, {
+      type:'line', plugins:[halfLine],
+      data:{ labels:sh.labels, datasets:datasets },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        interaction:{ mode:'index', intersect:false },
+        plugins:{
+          legend:{ labels:{ color:'#e8eaf0', font:{size:11}, boxWidth:12 } },
+          tooltip:{ callbacks:{
+            title:function(it){ return it&&it.length?it[0].label:''; },
+            label:function(c){ return c.dataset.label+'  '+(c.parsed.y===null?'\u2014':c.parsed.y.toFixed(1)+'%')+'  '+c.label; }
+          }}
+        },
+        scales:{
+          x:{ ticks:{color:'#9aa3b2',font:{size:10},maxRotation:0,autoSkip:true}, grid:{display:false} },
+          y:{ min:0, max:100, title:{display:true,text:'P(cash) %',color:'#9aa3b2',font:{size:11}},
+              ticks:{color:'#9aa3b2',font:{size:10},callback:function(v){ return v+'%'; }},
+              grid:{color:'rgba(255,255,255,.06)'} }
+        }
+      }
+    });
+  }
+
+  function parseCsvText(t){
+    if (typeof Papa === 'undefined') return [];
+    var res = Papa.parse(t, { header:true, skipEmptyLines:true });
+    return (res && res.data) ? res.data : [];
+  }
+
+  async function mcPoll(){
+    if (busy) return;
+    busy = true;
+    try {
+      var mr = await fetch(TS_BASE+'/meta', {cache:'no-store'});
+      if (!mr || !mr.ok) throw new Error('meta HTTP '+(mr?mr.status:'?'));
+      var meta = await mr.json();
+      var stampMs = parseUtc(meta.last_utc), nowMs = Date.parse(meta.server_utc);
+      if (isNaN(nowMs)) nowMs = Date.now();
+      var stale = !isNaN(stampMs) && (nowMs-stampMs) > STALE_MS;
+      if (meta.last_utc !== lastUtc){            // only refetch the CSV when it moved
+        var cr = await fetch(TS_BASE+'/timeseries.csv', {cache:'no-store'});
+        if (!cr || !cr.ok) throw new Error('csv HTTP '+(cr?cr.status:'?'));
+        var shaped = shape(parseCsvText(await cr.text()));
+        lastUtc = meta.last_utc; lastRows = meta.rows;
+        render(shaped);
+      }
+      setPill(stale?'stale':'live', (stale?'stale \u00b7 ':'live \u00b7 ') +
+              (meta.rows!=null?meta.rows:lastRows) + ' \u00b7 ' + (isNaN(stampMs)?'--:--':hhmm(stampMs)));
+    } catch (e){ setPill('off','offline'); }
+    busy = false;
+  }
+
+  function start(){
+    setPill('off','offline'); readout({series:[]});
+    mcPoll(); setInterval(mcPoll, POLL_MC_MS);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+
+  // test seam for the offline validation harness; unused by the page
+  window.WLS_MC = { shape:shape, poll:mcPoll, state:function(){ return {lastUtc:lastUtc, rows:lastRows}; } };
 })();
 </script>
 </body>
