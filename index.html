@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.45 — 2026-07-09 — cash line is a time-series (per-snapshot capture), plotted as a heavy dotted line, no markers; entry markers fill green above cash / red below; field-wide round completion + in-chart round-% overlay; in-chart pill shows Early/Late round-equivalents stacked (lower left) -->
+<!-- We Love Stevie Dashboard v3.46 — 2026-07-26 — cash line is a time-series (per-snapshot capture), plotted as a heavy dotted line, no markers; entry markers fill green above cash / red below; field-wide round completion + in-chart round-% overlay; in-chart pill shows Early/Late round-equivalents stacked (lower left) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -367,7 +367,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.45 (2026-07-09) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.46 (2026-07-26) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -459,7 +459,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.45 — 2026-07-09';
+const VERSION = 'v3.46 — 2026-07-26';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let POWER_CACHE = null;
@@ -1436,6 +1436,27 @@ function effectiveThru(p){
   const n = parseInt(v, 10);
   return Number.isNaN(n) ? 0 : n;
 }
+/* finishedThru — once a round is official the feed resets thru to 0 for players who
+   have FINISHED, so effectiveThru scores them as 0 and the field-completion badge
+   understates (2026-07-19: 49.7% when the round was in fact complete). A reset-to-zero
+   player is one with no holes showing, no tee time pending, and a real numeric
+   leaderboard position: that player is through 18. Used ONLY by the field
+   round-complete badge and the per-entry bars — the difficulty differencing keeps
+   raw effectiveThru, because it needs true deltas, not inferred ones. */
+function finishedThru(p){
+  const t = effectiveThru(p);
+  if (t > 0) return t;
+  const raw = String(p && p.thru != null ? p.thru : '').replace(/\*/g,'').trim();
+  if (raw !== '' && raw !== '0' && raw !== '-') return t;
+  const TEE = /\d{1,2}:\d{2}\s*[AP]M/i;
+  const tee = String((p && (p.teeTime != null ? p.teeTime :
+                    (p.tee_time != null ? p.tee_time :
+                    (p.teetime  != null ? p.teetime  : '')))) || '').trim();
+  if (tee !== '') return t;
+  const disp = String(p && p.thruDisplay != null ? p.thruDisplay : '').trim();
+  if (TEE.test(raw) || TEE.test(disp)) return t;
+  return /\d/.test(String((p && p.position) || '')) ? 18 : t;
+}
 const DIFF_KEY = 'weLoveStevie_diffTrack_v2';
 let DIFF_STATE = null;
 
@@ -1608,7 +1629,7 @@ function computeFieldRoundComplete(){
   if (!active.length) return null;
   let holes = 0, finished = 0, notStarted = 0;
   active.forEach(p => {
-    const t = effectiveThru(p);
+    const t = finishedThru(p);
     holes += t;
     if (t >= 18) finished++;
     else if (t === 0) notStarted++;
@@ -1648,7 +1669,7 @@ function renderRoundComplete(){
   const canvas=document.getElementById('roundCompleteChart'); if(!canvas) return;
   const info=document.getElementById('roundCompleteInfo');
   const live=(LIVE_LAST_PAYLOAD&&LIVE_LAST_PAYLOAD.players)?LIVE_LAST_PAYLOAD.players:[];
-  const thruByName={}; live.forEach(p=>{ thruByName[normalizePlayerName(p.name)]=effectiveThru(p); });
+  const thruByName={}; live.forEach(p=>{ thruByName[normalizePlayerName(p.name)]=finishedThru(p); });
   const SHORT={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
   const labels=[],vals=[],colors=[];
   TRACKED_NAMES.forEach((nm,i)=>{
