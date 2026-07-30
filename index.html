@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.49.1 — 2026-07-30 — paid-places override: fixed paid count from DK contest details (overlay-safe) drives cash rank everywhere via cashRankFor(); blank = old auto %-of-field rule; persisted, cleared on End Tournament. .1: keep-current through upload/bridge-poll loadData (payloads lack paidPlaces — v3.49 wiped the override every poll). Prior: v3.48 name-match fix (normalized ODDS keys, nickname aliases, fallback badge) -->
+<!-- We Love Stevie Dashboard v3.49.2 — 2026-07-30 — paid-places override: fixed paid count from DK contest details (overlay-safe) drives cash rank everywhere via cashRankFor(); blank = old auto %-of-field rule; persisted, cleared on End Tournament. .1: keep-current through upload/bridge-poll loadData (payloads lack paidPlaces — v3.49 wiped the override every poll). .2: fixed paid count shows EXACTLY in cashers tile/readout/field table (count-above-line only in auto mode) + config label-input pairs wrap together (Entry $ box was stranding next to Paid places). Prior: v3.48 name-match fix -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -274,17 +274,17 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   <button onclick="applyManualCash()">Override</button>
   <button onclick="clearCashOverride()" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--border)">Auto</button>
   <span id="cashInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
-  <label style="margin-left:16px">Format</label>
+  <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-left:16px"><label>Format</label>
   <select id="contestTypeInput" onchange="applyContestConfig()" style="width:110px">
     <option value="double_up">Double-up</option>
     <option value="50_50">50/50</option>
     <option value="triple_up">Triple-up</option>
     <option value="5x">5&#215;</option>
-  </select>
-  <label style="margin-left:8px">Entry $</label>
-  <input type="number" id="entryFeeInput" value="5" step="0.5" min="0.25" onchange="applyContestConfig()" style="width:70px">
-  <label style="margin-left:8px" title="Fixed paid places from the DK contest details screen (use this for overlay contests — payout positions don't shrink when the contest under-fills). Blank = auto from format/rake.">Paid places</label>
-  <input type="number" id="paidPlacesInput" placeholder="auto" min="1" step="1" onchange="applyContestConfig()" style="width:70px">
+  </select></span>
+  <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-left:8px"><label>Entry $</label>
+  <input type="number" id="entryFeeInput" value="5" step="0.5" min="0.25" onchange="applyContestConfig()" style="width:70px"></span>
+  <span style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;margin-left:8px"><label title="Fixed paid places from the DK contest details screen (use this for overlay contests — payout positions don't shrink when the contest under-fills). Blank = auto from format/rake.">Paid places</label>
+  <input type="number" id="paidPlacesInput" placeholder="auto" min="1" step="1" onchange="applyContestConfig()" style="width:70px"></span>
   <span id="paidInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
   <button onclick="openEndTournamentModal()" class="save-btn" title="Archive this tournament to a ZIP bundle then reset for the next one">End Tournament &amp; Save</button>
   <button onclick="hardReset()" style="background:var(--red);color:#fff;font-size:12px;padding:7px 16px;font-weight:700">HARD RESET</button>
@@ -400,7 +400,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.49.1 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.49.2 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -509,7 +509,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.49.1 — 2026-07-30';
+const VERSION = 'v3.49.2 — 2026-07-30';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -1020,7 +1020,8 @@ function loadPreset(names) {
  
 function renderFieldTable() {
   if (!ENTRIES.length) return;
-  const cashSlots = ENTRIES.filter(e => e.p >= CASH).length || cashRankFor(TOTAL);
+  const cashSlots = (PAID_PLACES !== null && PAID_PLACES > 0) ? cashRankFor(ENTRIES.length)
+    : (ENTRIES.filter(e => e.p >= CASH).length || cashRankFor(TOTAL));
   const buckets = [];
   for (let i = 0; i < ENTRIES.length; i += 25) {
     buckets.push([i+1, Math.min(i+25, ENTRIES.length)]);
@@ -2307,7 +2308,11 @@ function resetForNextTournament() {
 /* We-Love-Stevie — field scatter, cashers box, round-completion table, + three-way forecast toggle (Odds|Top20|Cut) with scoped odds-column display swapper. Additive, self-healing. */
 (function(){
   var SHORT={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
-  function cashRankVal(){return ENTRIES.filter(function(e){return e.l&&e.l.length&&e.p>=CASH;}).length;}
+  /* fixed paid places = the exact paid count; count-above-line only as the auto fallback */
+  function cashRankVal(){
+    if (typeof PAID_PLACES!=='undefined' && PAID_PLACES!==null && PAID_PLACES>0) return Math.min(PAID_PLACES, ENTRIES.length);
+    return ENTRIES.filter(function(e){return e.l&&e.l.length&&e.p>=CASH;}).length;
+  }
   function nm(s){if(s==null)return'';s=String(s);if(s.indexOf(',')>-1){var a=s.split(',');s=a[1].trim()+' '+a[0].trim();}return (typeof normalizePlayerName==='function')?normalizePlayerName(s):s.toLowerCase().trim();}
 
   window.FORECAST_MODE=(function(){try{var m=localStorage.getItem('forecastMode');if(m==='dg')m='top20';if(['odds','top20','cut'].indexOf(m)<0)m='odds';return m;}catch(e){return 'odds';}})();
