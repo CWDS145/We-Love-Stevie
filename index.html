@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.48 — 2026-07-30 — name-match fix: ODDS keyed by normalizePlayerName at ingest (CSV + live) and lookup (oddsFor), feed-nickname alias map (Ben James, Nico Echavarria, Jordan Smith, Matt McCarty, Cam Davis, Zac/Zach Bauchou), header badge lists players scored at worst-odds fallback -->
+<!-- We Love Stevie Dashboard v3.49 — 2026-07-30 — paid-places override: fixed paid count from DK contest details (overlay-safe) drives cash rank everywhere via cashRankFor(); blank = old auto %-of-field rule; persisted, cleared on End Tournament. Prior: v3.48 name-match fix (normalized ODDS keys, nickname aliases, fallback badge) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -283,6 +283,8 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </select>
   <label style="margin-left:8px">Entry $</label>
   <input type="number" id="entryFeeInput" value="5" step="0.5" min="0.25" onchange="applyContestConfig()" style="width:70px">
+  <label style="margin-left:8px" title="Fixed paid places from the DK contest details screen (use this for overlay contests — payout positions don't shrink when the contest under-fills). Blank = auto from format/rake.">Paid places</label>
+  <input type="number" id="paidPlacesInput" placeholder="auto" min="1" step="1" onchange="applyContestConfig()" style="width:70px">
   <span id="paidInfo" style="font-size:11px;color:var(--t3);margin-left:4px"></span>
   <button onclick="openEndTournamentModal()" class="save-btn" title="Archive this tournament to a ZIP bundle then reset for the next one">End Tournament &amp; Save</button>
   <button onclick="hardReset()" style="background:var(--red);color:#fff;font-size:12px;padding:7px 16px;font-weight:700">HARD RESET</button>
@@ -398,7 +400,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.48 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.49 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -461,6 +463,7 @@ const DK_COMMISSION = [
 const DK_MULTIPLE = { double_up: 2, triple_up: 3, '5x': 5 };
 let CONTEST_TYPE = 'double_up';   // '50_50' | 'double_up' | 'triple_up' | '5x' — persisted
 let ENTRY_FEE = 5;                // dollars — persisted
+let PAID_PLACES = null;           // v3.49: fixed paid places from contest details (overlay-safe); null = auto % rule — persisted
 function dkRake(fee, type){
   const row = DK_COMMISSION.find(r => fee >= r[0] && fee <= r[1]) || DK_COMMISSION[DK_COMMISSION.length-1];
   return (type === '50_50') ? row[2] : row[3];
@@ -470,17 +473,33 @@ function cashFraction(){
   const m = DK_MULTIPLE[CONTEST_TYPE] || 2;
   return (1 - dkRake(ENTRY_FEE, CONTEST_TYPE)) / m;      // multiplier: (1-R)/m
 }
-function cashRankFor(n){ return Math.round(n * cashFraction()); }
+function cashRankFor(n){
+  if (PAID_PLACES !== null && PAID_PLACES > 0) return Math.min(PAID_PLACES, n);
+  return Math.round(n * cashFraction());
+}
+/* effective paid % of the current field — reflects a fixed paid-places override (overlay contests) */
+function effectivePaidPct(){
+  const n = ENTRIES.length;
+  if (PAID_PLACES !== null && PAID_PLACES > 0 && n > 0) return Math.round(Math.min(PAID_PLACES, n)/n*1000)/10;
+  return Math.round(cashFraction()*1000)/10;
+}
 function updatePaidInfo(){
   const el = document.getElementById('paidInfo'); if (!el) return;
+  if (PAID_PLACES !== null && PAID_PLACES > 0){
+    const n = ENTRIES.length;
+    el.innerHTML = '<span style="color:var(--amber-t)">paid 1–' + PAID_PLACES + ' fixed' + (n>0 ? ' (' + effectivePaidPct() + '% of ' + n + ')' : '') + '</span>';
+    return;
+  }
   const r = dkRake(ENTRY_FEE, CONTEST_TYPE);
   el.textContent = 'paid ' + (Math.round(cashFraction()*1000)/10) + '% (rake ' + (Math.round(r*1000)/10) + '%)';
 }
 function applyContestConfig(){
   const t = document.getElementById('contestTypeInput');
   const f = document.getElementById('entryFeeInput');
+  const pp = document.getElementById('paidPlacesInput');
   if (t) CONTEST_TYPE = t.value;
   if (f){ const v = parseFloat(f.value); if(!isNaN(v)&&v>0) ENTRY_FEE = v; }
+  if (pp){ const v = parseInt(pp.value, 10); PAID_PLACES = (!isNaN(v)&&v>0) ? v : null; }
   POWER_CACHE = null;
   updatePaidInfo();
   if (typeof computeCashLine === 'function') computeCashLine();
@@ -490,7 +509,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.48 — 2026-07-30';
+const VERSION = 'v3.49 — 2026-07-30';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -724,7 +743,7 @@ function saveToStorage() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       entries: ENTRIES, odds: ODDS, freq: FREQ, oddsReal: Array.from(ODDS_REAL),
-      total: TOTAL, cashOverride: CASH_OVERRIDE, contestType: CONTEST_TYPE, entryFee: ENTRY_FEE,
+      total: TOTAL, cashOverride: CASH_OVERRIDE, contestType: CONTEST_TYPE, entryFee: ENTRY_FEE, paidPlaces: PAID_PLACES,
       uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value,
@@ -756,8 +775,10 @@ function loadData(d, fromStorage = false) {
   CASH_OVERRIDE = d.cashOverride !== undefined ? d.cashOverride : null;
   CONTEST_TYPE = d.contestType || CONTEST_TYPE;
   ENTRY_FEE = (d.entryFee !== undefined && d.entryFee > 0) ? d.entryFee : ENTRY_FEE;
+  PAID_PLACES = (d.paidPlaces !== undefined && d.paidPlaces !== null && d.paidPlaces > 0) ? d.paidPlaces : null;
   { const _t=document.getElementById('contestTypeInput'); if(_t) _t.value=CONTEST_TYPE;
-    const _f=document.getElementById('entryFeeInput'); if(_f) _f.value=ENTRY_FEE; updatePaidInfo(); }
+    const _f=document.getElementById('entryFeeInput'); if(_f) _f.value=ENTRY_FEE;
+    const _p=document.getElementById('paidPlacesInput'); if(_p) _p.value=(PAID_PLACES!==null?PAID_PLACES:''); updatePaidInfo(); }
   if (CASH_OVERRIDE !== null) document.getElementById('cashLineInput').value = CASH_OVERRIDE;
   computeCashLine();
   CUT_PLAYERS = new Set();
@@ -1100,7 +1121,7 @@ function renderSingle(entry) {
   if (inCashByPower) { pd.innerHTML = '<div style="color:var(--green);font-size:13px;padding:8px 0">Projected to cash — Power Rank #' + pr + ' (cutoff: #' + cashRankForChart + ')</div>'; }
   else {
     const entriesToPass = pr - cashRankForChart;
-    pd.innerHTML = '<div style="color:var(--red);font-size:13px;padding:8px 0">' + entriesToPass + ' entries to pass by power rank to reach top ' + Math.round(cashFraction()*100) + '% (cutoff: #' + cashRankForChart + ')</div>';
+    pd.innerHTML = '<div style="color:var(--red);font-size:13px;padding:8px 0">' + entriesToPass + ' entries to pass by power rank to reach top ' + Math.round(effectivePaidPct()) + '% (cutoff: #' + cashRankForChart + ')</div>';
   }
   const ctx2 = document.getElementById('sScatter');
   if (sScatterChart) sScatterChart.destroy();
@@ -1873,7 +1894,7 @@ function renderScoreChart() {
     spanGaps: true
   }));
   datasets.push({
-    label: 'Cash line (top ' + Math.round(cashFraction()*100) + '%)',
+    label: 'Cash line (top ' + Math.round(effectivePaidPct()) + '%)',
     data: cashSeries,
     borderColor: '#ef4444',
     backgroundColor: '#ef444422',
@@ -2206,6 +2227,8 @@ function resetForNextTournament() {
   ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
   CUT_PLAYERS = new Set(); CUT_MANUAL = new Set(); CUT_LIVE = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
   POWER_CACHE = null; CASH_OVERRIDE = null; CASH = 0;
+  PAID_PLACES = null;
+  { const _p = document.getElementById('paidPlacesInput'); if (_p) _p.value = ''; updatePaidInfo(); }
   SCORE_HISTORY = [];
   LIVE_LAST_PAYLOAD = null;
   lastUploadTime = null;
