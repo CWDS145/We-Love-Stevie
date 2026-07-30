@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.47 — 2026-07-26 — cash line is a time-series (per-snapshot capture), plotted as a heavy dotted line, no markers; entry markers fill green above cash / red below; field-wide round completion + in-chart round-% overlay; in-chart pill shows Early/Late round-equivalents stacked (lower left) -->
+<!-- We Love Stevie Dashboard v3.48 — 2026-07-30 — name-match fix: ODDS keyed by normalizePlayerName at ingest (CSV + live) and lookup (oddsFor), feed-nickname alias map (Ben James, Nico Echavarria, Jordan Smith, Matt McCarty, Cam Davis, Zac/Zach Bauchou), header badge lists players scored at worst-odds fallback -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -162,7 +162,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
  <div class="dash">
  
 <div class="header">
-  <div><h1>We Love Stevie</h1><div class="sub" id="headerSub">DraftKings</div></div>
+  <div><h1>We Love Stevie</h1><div class="sub" id="headerSub">DraftKings</div><div class="sub" id="unmatchedBadge" style="display:none;color:var(--red);font-weight:600;cursor:help"></div></div>
   <div style="display:flex;gap:8px;align-items:center"><span class="badge" id="dataBadge" style="background:var(--blue-bg);color:var(--blue-t)">NO DATA</span></div>
 </div>
 <div id="timestamp" style="text-align:center;font-size:12px;color:#ffffff;font-family:var(--mono);margin-bottom:16px"></div>
@@ -398,7 +398,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.47 (2026-07-26) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.48 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -490,9 +490,10 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.47 — 2026-07-26';
+const VERSION = 'v3.48 — 2026-07-30';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
+let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
 let POWER_CACHE = null;
 let CASH_OVERRIDE = null;
 const CASH_CORR_KEY = 'weLoveStevieDashboard_cashCorr';
@@ -581,8 +582,9 @@ function hardReset() {
 function powerScore(e) {
   let score = 0;
   e.l.forEach(p => {
-    if (!isPlayerCut(p) && ODDS[p] !== undefined && ODDS[p] > 0) {
-      score += 1 / ODDS[p];
+    const o = oddsFor(p);
+    if (!isPlayerCut(p) && o !== undefined && o > 0) {
+      score += 1 / o;
     }
   });
   return Math.round(score * 10000) / 10000;
@@ -611,8 +613,25 @@ let fieldCashAvg = 0, fieldNonCashAvg = 0, lastUploadTime = null;
 let currentSingleEntry = null;
 let cmpEntries = [];
  
+// v3.48: feed nicknames that survive normalization \u2014 keys/values are already-normalized forms, DK lineup spelling wins
+const PLAYER_ALIASES = {
+  'ben james': 'benjamin james',
+  'nico echavarria': 'nicolas echavarria',
+  'jordan smith': 'jordan l smith',
+  'matt mccarty': 'matthew mccarty',
+  'cam davis': 'cameron davis',
+  'zac bauchou': 'zachary bauchou',
+  'zach bauchou': 'zachary bauchou'
+};
 function normalizePlayerName(s) {
-  return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim().replace(/\s+/g,' ');
+  const n = s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z ]/g,'').trim().replace(/\s+/g,' ');
+  return PLAYER_ALIASES[n] || n;
+}
+
+// v3.48: ODDS is keyed by normalized name; raw-key fallback covers pre-3.48 saved state
+function oddsFor(p) {
+  const v = ODDS[normalizePlayerName(p)];
+  return v !== undefined ? v : ODDS[p];
 }
  
 function recomputeCutPlayers() {
@@ -704,7 +723,7 @@ function isPlayerCut(p) { return CUT_PLAYERS.has(p); }
 function saveToStorage() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      entries: ENTRIES, odds: ODDS, freq: FREQ,
+      entries: ENTRIES, odds: ODDS, freq: FREQ, oddsReal: Array.from(ODDS_REAL),
       total: TOTAL, cashOverride: CASH_OVERRIDE, contestType: CONTEST_TYPE, entryFee: ENTRY_FEE,
       uploadTime: lastUploadTime,
       tournament: document.getElementById('tournamentInput').value.trim(),
@@ -731,7 +750,9 @@ function fmt(ts) {
 }
  
 function loadData(d, fromStorage = false) {
-  TOTAL = d.total; ODDS = d.odds; FREQ = d.freq; ENTRIES = d.entries;
+  TOTAL = d.total; FREQ = d.freq; ENTRIES = d.entries;
+  ODDS = {}; Object.keys(d.odds || {}).forEach(k => { ODDS[normalizePlayerName(k)] = d.odds[k]; }); // v3.48: re-key (migrates pre-3.48 raw-key saved state)
+  ODDS_REAL = new Set(d.oddsReal ? d.oddsReal.map(normalizePlayerName) : Object.keys(ODDS));
   CASH_OVERRIDE = d.cashOverride !== undefined ? d.cashOverride : null;
   CONTEST_TYPE = d.contestType || CONTEST_TYPE;
   ENTRY_FEE = (d.entryFee !== undefined && d.entryFee > 0) ? d.entryFee : ENTRY_FEE;
@@ -777,13 +798,25 @@ function autoLoadDrinkMilk() {
 function recomputeFieldAvgs() {
   let cS=0,cN=0,nS=0,nN=0;
   ENTRIES.forEach(e => {
-    const ol = e.l.filter(p => !isPlayerCut(p) && ODDS[p] !== undefined);
+    const ol = e.l.filter(p => !isPlayerCut(p) && oddsFor(p) !== undefined);
     if (!ol.length) return;
-    const avg = ol.reduce((s,p) => s + ODDS[p], 0) / ol.length;
+    const avg = ol.reduce((s,p) => s + oddsFor(p), 0) / ol.length;
     if (e.p >= CASH) { cS += avg; cN++; } else { nS += avg; nN++; }
   });
   fieldCashAvg = cN ? Math.round(cS/cN*10)/10 : 200;
   fieldNonCashAvg = nN ? Math.round(nS/nN*10)/10 : 300;
+  renderUnmatchedBadge();
+}
+
+// v3.48: players whose odds never matched get the worst-odds fallback — show them, never drop silently
+function renderUnmatchedBadge() {
+  const el = document.getElementById('unmatchedBadge');
+  if (!el) return;
+  const missing = Object.keys(FREQ).filter(p => !ODDS_REAL.has(normalizePlayerName(p)));
+  if (!missing.length) { el.style.display = 'none'; el.textContent = ''; el.title = ''; return; }
+  el.style.display = 'block';
+  el.textContent = '⚠ unmatched players: ' + missing.length + ' (scored at worst odds — hover for names)';
+  el.title = missing.join(', ');
 }
  
 function refreshViews() {
@@ -813,13 +846,14 @@ function parseCSV(text) {
   const colPts = find(['points','pts']), colTime = find(['timeremaining','time_remaining','time remaining','holes']);
   const colLineup = find(['lineup']), colPlayer = find(['player']), colOdds = find(['betting odds','bettingodds','odds']);
   if (!colRank || !colName || !colPts) throw new Error('Missing columns. Need: Rank, EntryName, Points.');
-  const odds = {};
+  const odds = {}, oddsReal = [];
   if (colPlayer && colOdds) {
     rows.forEach(r => {
       const p = (r[colPlayer]||'').trim(), o = (r[colOdds]||'').trim();
       if (p && o && o !== '#N/A' && o !== 'N/A' && o !== '') {
         const v = parseFloat(o.replace(/,/g,''));
-        if (!isNaN(v) && v > 0 && !odds[p]) odds[p] = Math.round(v*100)/100;
+        const k = normalizePlayerName(p);
+        if (!isNaN(v) && v > 0 && odds[k] === undefined) { odds[k] = Math.round(v*100)/100; oddsReal.push(k); }
       }
     });
   }
@@ -836,12 +870,12 @@ function parseCSV(text) {
   const oddsVals = Object.values(odds);
   if (oddsVals.length) {
     const maxO = Math.max(...oddsVals);
-    Object.keys(freq).forEach(p => { if (odds[p] === undefined) odds[p] = maxO; });
+    Object.keys(freq).forEach(p => { const k = normalizePlayerName(p); if (odds[k] === undefined) odds[k] = maxO; });
   }
   const total = entries.length;
   const freqPct = {};
   Object.keys(freq).forEach(p => { freqPct[p] = Math.round(freq[p]/total*1000)/10; });
-  return { entries, odds, freq: freqPct, total };
+  return { entries, odds, freq: freqPct, total, oddsReal };
 }
  
 const uploadZone = document.getElementById('uploadZone');
@@ -908,7 +942,7 @@ function handleFile(file) {
       autoLoadDrinkMilk();
 if (isLive) fetchLive(); else startLive();   // v3.31: live odds permanent — re-applied immediately after every upload
       const histMsg = sameTournament ? ' (history preserved)' : ' (fresh tournament)';
-      showStatus('Loaded ' + data.total + ' entries, ' + Object.keys(data.odds).length + ' players with odds' + (isZip ? ' (from ZIP)' : '') + histMsg + '.', true);
+      showStatus('Loaded ' + data.total + ' entries, ' + data.oddsReal.length + ' players with real odds' + (isZip ? ' (from ZIP)' : '') + histMsg + '.', true);
     } catch(err) { showStatus('Parse error: ' + err.message, false); }
   };
   reader.readAsArrayBuffer(file);
@@ -928,7 +962,7 @@ function getOdds(e) {
   const fallbackOdds = oddsVals.length ? Math.max(...oddsVals) : null;
   e.l.forEach(p => {
     if (isPlayerCut(p)) { c.push({ name:p, freq:FREQ[p]||0 }); }
-    else if (ODDS[p] !== undefined) { a.push({ name:p, odds:ODDS[p], freq:FREQ[p]||0 }); }
+    else if (oddsFor(p) !== undefined) { a.push({ name:p, odds:oddsFor(p), freq:FREQ[p]||0 }); }
     else { a.push({ name:p, odds:fallbackOdds, freq:FREQ[p]||0 }); }
   });
   const w = a.filter(x => x.odds !== null);
@@ -1136,7 +1170,7 @@ function renderSingle(entry) {
   const ov = document.getElementById('sOverlap');
   const od = entry.l.map(p => {
     const cnt = above.filter(x => x.l.includes(p)).length;
-    return { name:p, cnt, pct:above.length?Math.round(cnt/above.length*100):0, odds:ODDS[p], isCut:isPlayerCut(p) };
+    return { name:p, cnt, pct:above.length?Math.round(cnt/above.length*100):0, odds:oddsFor(p), isCut:isPlayerCut(p) };
   }).sort((a,b) => b.pct-a.pct);
   ov.innerHTML = od.map(d => {
     const c = d.isCut?'var(--t3)':d.pct>40?'var(--red)':d.pct>20?'var(--amber)':'var(--green)';
@@ -1279,8 +1313,8 @@ function renderCompare() {
   allP.forEach(p => {
     const inW = cmpEntries.map((e,i) => e.l.includes(p)?i:-1).filter(x=>x>=0);
     const isCut = isPlayerCut(p);
-    if (inW.length>1) shared.push({name:p,in:inW,odds:ODDS[p],isCut});
-    else { const i=inW[0]; if(!unique.has(i))unique.set(i,[]); unique.get(i).push({name:p,odds:ODDS[p],isCut}); }
+    if (inW.length>1) shared.push({name:p,in:inW,odds:oddsFor(p),isCut});
+    else { const i=inW[0]; if(!unique.has(i))unique.set(i,[]); unique.get(i).push({name:p,odds:oddsFor(p),isCut}); }
   });
   const sd = document.getElementById('cmpShared'); let h2='';
   if (shared.length) {
@@ -1395,14 +1429,10 @@ async function fetchLive() {
       }
       recomputeCutPlayers();
       const cutsChanged = cutsBeforeKey !== [...CUT_PLAYERS].sort().join('|');
-      const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-      const oddsKeyMap = {};
-      Object.keys(ODDS).forEach(k => { oddsKeyMap[norm(k)] = k; });
       data.players.forEach(p => {
         if (p.odds !== null && p.odds > 0) {
-          const nName = norm(p.name);
-          const ek = oddsKeyMap[nName];
-          if (ek) { ODDS[ek] = p.odds; } else { ODDS[p.name] = p.odds; oddsKeyMap[nName] = p.name; }
+          const k = normalizePlayerName(p.name); // v3.48: full normalizer + aliases, replaces accent-only norm()
+          ODDS[k] = p.odds; ODDS_REAL.add(k);
           oddsUpdated++;
         }
       });
