@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.49 — 2026-07-30 — paid-places override: fixed paid count from DK contest details (overlay-safe) drives cash rank everywhere via cashRankFor(); blank = old auto %-of-field rule; persisted, cleared on End Tournament. Prior: v3.48 name-match fix (normalized ODDS keys, nickname aliases, fallback badge) -->
+<!-- We Love Stevie Dashboard v3.49.1 — 2026-07-30 — paid-places override: fixed paid count from DK contest details (overlay-safe) drives cash rank everywhere via cashRankFor(); blank = old auto %-of-field rule; persisted, cleared on End Tournament. .1: keep-current through upload/bridge-poll loadData (payloads lack paidPlaces — v3.49 wiped the override every poll). Prior: v3.48 name-match fix (normalized ODDS keys, nickname aliases, fallback badge) -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -400,7 +400,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.49 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.49.1 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -509,7 +509,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.49 — 2026-07-30';
+const VERSION = 'v3.49.1 — 2026-07-30';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -775,7 +775,9 @@ function loadData(d, fromStorage = false) {
   CASH_OVERRIDE = d.cashOverride !== undefined ? d.cashOverride : null;
   CONTEST_TYPE = d.contestType || CONTEST_TYPE;
   ENTRY_FEE = (d.entryFee !== undefined && d.entryFee > 0) ? d.entryFee : ENTRY_FEE;
-  PAID_PLACES = (d.paidPlaces !== undefined && d.paidPlaces !== null && d.paidPlaces > 0) ? d.paidPlaces : null;
+  /* keep-current when the payload lacks the field — upload/bridge-poll payloads never carry it;
+     cleared only by the user (input blank) or End Tournament reset */
+  PAID_PLACES = (d.paidPlaces !== undefined && d.paidPlaces !== null && d.paidPlaces > 0) ? d.paidPlaces : PAID_PLACES;
   { const _t=document.getElementById('contestTypeInput'); if(_t) _t.value=CONTEST_TYPE;
     const _f=document.getElementById('entryFeeInput'); if(_f) _f.value=ENTRY_FEE;
     const _p=document.getElementById('paidPlacesInput'); if(_p) _p.value=(PAID_PLACES!==null?PAID_PLACES:''); updatePaidInfo(); }
