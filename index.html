@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.49.2 — 2026-07-30 — paid-places override: fixed paid count from DK contest details (overlay-safe) drives cash rank everywhere via cashRankFor(); blank = old auto %-of-field rule; persisted, cleared on End Tournament. .1: keep-current through upload/bridge-poll loadData (payloads lack paidPlaces — v3.49 wiped the override every poll). .2: fixed paid count shows EXACTLY in cashers tile/readout/field table (count-above-line only in auto mode) + config label-input pairs wrap together (Entry $ box was stranding next to Paid places). Prior: v3.48 name-match fix -->
+<!-- We Love Stevie Dashboard v3.50 — 2026-07-31 — round-complete badge fix: finishedThru() no longer infers thru-18 from a numeric leaderboard position for players the feed marks ACTIVE or BETWEEN_ROUNDS with 0 holes played — they have not teed off in the displayed round (Rocket Classic R2 start read 91.2% vs a true 1.3%). Also drops the "undefined undefined" phantom row from the active-field count. Prior: v3.49.2 paid-places override -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -400,7 +400,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.49.2 (2026-07-30) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.50 (2026-07-31) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -509,7 +509,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.49.2 — 2026-07-30';
+const VERSION = 'v3.50 — 2026-07-31';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -1531,6 +1531,15 @@ function effectiveThru(p){
 function finishedThru(p){
   const t = effectiveThru(p);
   if (t > 0) return t;
+  /* v3.50 — the feed states the case outright: ACTIVE or BETWEEN_ROUNDS with zero
+     holes showing means this player has not teed off in the displayed round. Trust
+     that over the numeric-position inference below, which read 129 not-yet-started
+     players as thru-18 at Rocket Classic R2 (badge 89.0% vs a true 1.3%). A player
+     who has finished keeps thru=18/F and exits at the t>0 line above; only after the
+     feed rolls them to the next round does thru reset to 0 — and then 0 is correct
+     for that new round. Feeds with no playerState fall through to the old inference. */
+  const _ps = String((p && p.playerState) || '').toUpperCase();
+  if (_ps === 'BETWEEN_ROUNDS' || _ps === 'ACTIVE') return t;
   const raw = String(p && p.thru != null ? p.thru : '').replace(/\*/g,'').trim();
   if (raw !== '' && raw !== '0' && raw !== '-') return t;
   const TEE = /\d{1,2}:\d{2}\s*[AP]M/i;
@@ -1710,7 +1719,7 @@ function isCutPayloadPlayer(p){
 }
 function computeFieldRoundComplete(){
   const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
-  const active = live.filter(p => p && p.name && p.name !== 'undefined' && !isCutPayloadPlayer(p));
+  const active = live.filter(p => p && p.name && !/undefined/.test(p.name) && !isCutPayloadPlayer(p));
   if (!active.length) return null;
   let holes = 0, finished = 0, notStarted = 0;
   active.forEach(p => {
