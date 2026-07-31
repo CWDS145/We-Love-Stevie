@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.50 — 2026-07-31 — round-complete badge fix: finishedThru() no longer infers thru-18 from a numeric leaderboard position for players the feed marks ACTIVE or BETWEEN_ROUNDS with 0 holes played — they have not teed off in the displayed round (Rocket Classic R2 start read 91.2% vs a true 1.3%). Also drops the "undefined undefined" phantom row from the active-field count. Prior: v3.49.2 paid-places override -->
+<!-- We Love Stevie Dashboard v3.51 — 2026-07-31 — Monte Carlo chart gets the same From/To window slider the score tracker has: trims which stretch of the trailing 2h is plotted, window survives the 2-minute poll re-render, and parking the To handle at the newest point keeps the chart following live. Readout chips still show the true latest value. Prior: v3.50 round-complete badge fix -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -240,6 +240,13 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
     <span id="mcPill" class="mc-pill mc-off">offline</span>
   </div>
   <div style="position:relative;height:260px"><canvas id="mcChart"></canvas></div>
+  <div id="mcXWindowControls" style="display:none;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap">
+    <span style="font-size:11px;color:var(--t3);min-width:32px">From</span>
+    <input type="range" id="mcXStart" min="0" max="0" value="0" step="1" oninput="onMcWindowInput('start')" style="flex:1;min-width:120px;accent-color:var(--blue);cursor:pointer">
+    <span style="font-size:11px;color:var(--t3);min-width:20px">To</span>
+    <input type="range" id="mcXEnd" min="0" max="0" value="0" step="1" oninput="onMcWindowInput('end')" style="flex:1;min-width:120px;accent-color:var(--blue);cursor:pointer">
+    <span id="mcXWindowReadout" style="font-size:11px;color:var(--t2);font-family:var(--mono);white-space:nowrap"></span>
+  </div>
   <div id="mcReadout" style="margin-top:8px;min-height:16px"></div>
   <div style="font-size:11px;color:var(--t3);margin-top:6px">P(cash) per tracked entry from the local Monte Carlo engine · last 2 hours · tailnet only.</div>
 </div>
@@ -400,7 +407,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
 </div>
  
-<div class="footer">We Love Stevie Dashboard v3.50 (2026-07-31) — Built with Chart.js + PapaParse + JSZip</div>
+<div class="footer">We Love Stevie Dashboard v3.51 (2026-07-31) — Built with Chart.js + PapaParse + JSZip</div>
 </div>
  
 <!-- PROB LOGIC MODAL -->
@@ -509,7 +516,7 @@ function applyContestConfig(){
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
 }
-const VERSION = 'v3.50 — 2026-07-31';
+const VERSION = 'v3.51 — 2026-07-31';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -2482,6 +2489,11 @@ function resetForNextTournament() {
   var FALLBACK_COLORS=['#3b82f6','#a855f7','#14b8a6','#f59e0b','#ef4444','#22c55e','#e879f9','#38bdf8'];
   var SHORT_MC={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
   var mcChart=null, lastUtc=null, busy=false, lastRows=0;
+  /* v3.51 — From/To window, same contract as the score tracker's X_START/X_END.
+     Held here, not inside render(), because mcPoll() rebuilds the chart from
+     scratch every two minutes and would otherwise reset the operator's window.
+     MC_X_END === null means "parked at the newest point" => keep following live. */
+  var MC_X_START = 0, MC_X_END = null, lastShaped = null;
 
   function el(id){ return document.getElementById(id); }
   function names(){ return (typeof TRACKED_NAMES!=='undefined'&&TRACKED_NAMES)?TRACKED_NAMES:[]; }
@@ -2554,17 +2566,51 @@ function resetForNextTournament() {
     }
   };
 
+  function syncMcWindowControls(sh, n, s, e){
+    var ctrl=el('mcXWindowControls'), sEl=el('mcXStart'), eEl=el('mcXEnd'), out=el('mcXWindowReadout');
+    if (!ctrl||!sEl||!eEl) return;
+    if (n < 2){ ctrl.style.display='none'; return; }
+    ctrl.style.display='flex';
+    sEl.max=n-1; eEl.max=n-1; sEl.value=s; eEl.value=e;
+    if (out) out.textContent=(sh.labels[s]||'')+'  \u2192  '+(sh.labels[e]||'')+
+                             '  ('+(e-s+1)+' of '+n+')';
+  }
+
+  function onMcWindowInput(which){
+    if (!lastShaped) return;
+    var n=lastShaped.labels.length; if (n < 2) return;
+    var sEl=el('mcXStart'), eEl=el('mcXEnd'); if (!sEl||!eEl) return;
+    var s=parseInt(sEl.value,10); if (isNaN(s)) s=0;
+    var e=parseInt(eEl.value,10); if (isNaN(e)) e=n-1;
+    if (which==='start' && s>e){ e=s; eEl.value=e; }
+    if (which==='end'   && e<s){ s=e; sEl.value=s; }
+    MC_X_START=s;
+    MC_X_END=(e>=n-1)?null:e;
+    render(lastShaped);
+  }
+  window.onMcWindowInput = onMcWindowInput;   // reached from the inline oninput
+
   function render(sh){
+    lastShaped = sh;
     readout(sh);
     var canvas=el('mcChart'); if (!canvas||typeof Chart==='undefined') return;
+    var n=sh.labels.length, winStart=0, winEnd=n-1;
+    if (n >= 2){
+      winStart=Math.min(Math.max(0,MC_X_START), n-1);
+      winEnd=(MC_X_END===null) ? n-1 : Math.min(Math.max(0,MC_X_END), n-1);
+      if (winStart > winEnd) winStart = winEnd;
+    }
+    syncMcWindowControls(sh, n, winStart, winEnd);
+    var winLabels=sh.labels.slice(winStart, winEnd+1);
     var datasets=sh.series.map(function(s){
-      return { label:s.label, data:s.data, borderColor:s.color, backgroundColor:s.color+'22',
+      return { label:s.label, data:s.data.slice(winStart, winEnd+1),
+               borderColor:s.color, backgroundColor:s.color+'22',
                borderWidth:2, pointRadius:3, pointHoverRadius:5, tension:.3, spanGaps:true, fill:false };
     });
     if (mcChart){ mcChart.destroy(); mcChart=null; }
     mcChart = new Chart(canvas, {
       type:'line', plugins:[halfLine, mcValueLabels],
-      data:{ labels:sh.labels, datasets:datasets },
+      data:{ labels:winLabels, datasets:datasets },
       options:{
         responsive:true, maintainAspectRatio:false, animation:false,
         interaction:{ mode:'index', intersect:false },
@@ -2622,7 +2668,9 @@ function resetForNextTournament() {
   else start();
 
   // test seam for the offline validation harness; unused by the page
-  window.WLS_MC = { shape:shape, poll:mcPoll, state:function(){ return {lastUtc:lastUtc, rows:lastRows}; } };
+  window.WLS_MC = { shape:shape, poll:mcPoll, render:render,
+                    window:function(){ return {start:MC_X_START, end:MC_X_END}; },
+                    state:function(){ return {lastUtc:lastUtc, rows:lastRows}; } };
 })();
 </script>
 </body>
