@@ -510,13 +510,18 @@ function applyContestConfig(){
   POWER_CACHE = null;
   updatePaidInfo();
   if (typeof computeCashLine === 'function') computeCashLine();
+  if (TOTAL > 0){
+    const tourney = document.getElementById('tournamentInput').value.trim();
+    document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (' + (CASH_OVERRIDE !== null ? 'manual' : 'auto') + ')';
+  }
   if (typeof recomputeFieldAvgs === 'function') recomputeFieldAvgs();
   if (typeof renderFieldTable === 'function') renderFieldTable();
   if (typeof refreshViews === 'function') refreshViews();
   if (typeof renderScoreChart === 'function') renderScoreChart();
   if (typeof saveToStorage === 'function') saveToStorage();
+  if (typeof window.__wlsAddonRefresh === 'function') try{ window.__wlsAddonRefresh(); }catch(e){}
 }
-const VERSION = 'v3.51 — 2026-07-31';
+const VERSION = 'v3.52 — 2026-08-23';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -2423,6 +2428,7 @@ function resetForNextTournament() {
   }
 
   function boot(){try{registerScatterPlugin();}catch(e){}try{renderFloatBox();}catch(e){}try{renderReadout();}catch(e){}try{renderToggle();}catch(e){}try{swapOdds();}catch(e){}}
+  window.__wlsAddonRefresh=boot; /* lets applyContestConfig refresh the cashers box/readout instantly instead of waiting for the 5s tick */
   if(document.readyState!=='loading'){boot();refreshDGMetrics();}else document.addEventListener('DOMContentLoaded',function(){boot();refreshDGMetrics();});
   setInterval(boot,5000);
   setInterval(refreshDGMetrics,5*60*1000);
