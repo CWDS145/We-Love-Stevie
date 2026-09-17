@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.53 — 2026-08-29 — Monte Carlo badge stops going stale between rounds. Root cause: the badge derived "stale" from the age of the newest DATA row, which conflates two different facts — whether the producer is alive, and whether the field is playing. Between rounds a healthy producer correctly appends nothing for hours and the badge went amber on a working system. /meta now carries a producer heartbeat (producer_utc/status/reason/round, written by mc_tick on EVERY tick including the ones that append nothing, served by wls_ts_server v1.2). Amber now means the PRODUCER stopped; a new blue IDLE state means producer alive, field not playing, and names the round status. Falls back to the old data-age rule when producer_utc is absent. Prior: v3.52 paid-places apply refreshes header cash line + cashers box -->
+<!-- We Love Stevie Dashboard v3.54 — 2026-09-17 — Monte Carlo badge tells a FAILING producer from an idle one. Root cause: v3.53 replaced the data-age rule with a producer heartbeat, but mc_tick writes that heartbeat on every tick INCLUDING the ones that fail, so producer_status was never read and eighteen days of engine exit 4 rendered as blue IDLE over 30 Aug data with two entries at 100% cash. The pill now has an amber "producer erroring" state driven by producer_status, producer_reason prints under the chart, and a stamp from another day carries its date instead of a bare hh:mm that read as this afternoon. Prior: v3.53 — 2026-08-29 — Monte Carlo badge stops going stale between rounds. Root cause: the badge derived "stale" from the age of the newest DATA row, which conflates two different facts — whether the producer is alive, and whether the field is playing. Between rounds a healthy producer correctly appends nothing for hours and the badge went amber on a working system. /meta now carries a producer heartbeat (producer_utc/status/reason/round, written by mc_tick on EVERY tick including the ones that append nothing, served by wls_ts_server v1.2). Amber now means the PRODUCER stopped; a new blue IDLE state means producer alive, field not playing, and names the round status. Falls back to the old data-age rule when producer_utc is absent. Prior: v3.52 paid-places apply refreshes header cash line + cashers box -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -252,6 +252,7 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   </div>
   <div id="mcReadout" style="margin-top:8px;min-height:16px"></div>
   <div style="font-size:11px;color:var(--t3);margin-top:6px">P(cash) per tracked entry from the local Monte Carlo engine · last 2 hours · tailnet only.</div>
+  <div id="mcWhy" style="display:none;font-size:11px;color:#f59e0b;margin-top:4px;word-break:break-word"></div>
 </div>
 
 <!-- ROUND COMPLETION CHART (v3.21) -->
@@ -2514,6 +2515,18 @@ function resetForNextTournament() {
     var t=Date.parse(v); return isNaN(t)?NaN:t;
   }
   function hhmm(ms){ var d=new Date(ms); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  /* v3.54 - the pill printed hhmm ALONE, so the newest row from 30 Aug 22:06 rendered as
+     "18:06" and read as this afternoon. A stamp that is not from the same day as the server
+     now carries its date, which is the difference between "a few hours quiet" and "three
+     weeks stale" at a glance. */
+  function stampLabel(ms, nowMs){
+    if (isNaN(ms)) return '--:--';
+    var d=new Date(ms), n=new Date(isNaN(nowMs)?Date.now():nowMs);
+    var sameDay = d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
+    if (sameDay) return hhmm(ms);
+    var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return d.getDate()+' '+MON[d.getMonth()]+' '+hhmm(ms);
+  }
   function colorFor(a,idx){ var i=names().indexOf(a), pal=palette(); return (i>=0&&pal[i])?pal[i]:FALLBACK_COLORS[idx%FALLBACK_COLORS.length]; }
   function labelFor(a){ return SHORT_MC[a]||a; }
 
@@ -2663,28 +2676,38 @@ function resetForNextTournament() {
         lastUtc = meta.last_utc; lastRows = meta.rows;
         render(shaped);
       }
-      /* v3.53 \u2014 producer liveness and data recency are SEPARATE facts.
-         producer_utc is a heartbeat mc_tick writes on every tick, including the
-         ones that append nothing, so an old newest-row no longer implies a
-         fault. Amber = the producer stopped. Blue IDLE = producer alive, field
-         not playing. Servers older than wls_ts_server v1.2 send no
-         producer_utc, so we fall back to the original data-age rule. */
+      /* v3.54 \u2014 THREE separate facts, not two: is the producer alive, is it SUCCEEDING,
+         and is the field playing. v3.53 read only the heartbeat, and mc_tick writes that
+         heartbeat on every tick INCLUDING the ones that fail, so a producer that had errored
+         on every tick for eighteen days was indistinguishable from a healthy one waiting
+         between rounds: the pill sat on blue IDLE while the chart drew 30 Aug data and two
+         entries showed 100% cash. producer_status is the fact that settles it, and ERROR is
+         amber with the reason attached, never idle. Servers older than wls_ts_server v1.2
+         send no producer_utc, so we fall back to the original data-age rule. */
       var prodMs   = parseUtc(meta.producer_utc);
       var dataOld  = !isNaN(stampMs) && (nowMs-stampMs) > STALE_MS;
+      var prodErr  = String(meta.producer_status||'').toLowerCase()==='error';
       var kind, lead;
       if (!isNaN(prodMs)){
-        if ((nowMs-prodMs) > STALE_MS){ kind='stale'; lead='stale'; }
+        if ((nowMs-prodMs) > STALE_MS){ kind='stale'; lead='producer stopped'; }
+        else if (prodErr)             { kind='stale'; lead='producer erroring'; }
         else if (dataOld)             { kind='idle';  lead='idle';  }
         else                          { kind='live';  lead='live';  }
       } else {
         kind = dataOld?'stale':'live'; lead = kind;
       }
-      var tail = (meta.rows!=null?meta.rows:lastRows) + ' \u00b7 ' +
-                 (isNaN(stampMs)?'--:--':hhmm(stampMs));
+      var tail = (meta.rows!=null?meta.rows:lastRows) + ' \u00b7 ' + stampLabel(stampMs, nowMs);
       if (kind==='idle' && meta.producer_round!=null)
         tail += ' \u00b7 R' + meta.producer_round +
                 (meta.producer_round_status?' '+meta.producer_round_status:'');
       setPill(kind, lead + ' \u00b7 ' + tail);
+      /* the reason names the actual fault and is far too long for the pill, so it goes under
+         the chart beside the caption that is already there. */
+      var why = el('mcWhy');
+      if (why){
+        why.textContent = (prodErr && meta.producer_reason) ? ('producer error: ' + meta.producer_reason) : '';
+        why.style.display = why.textContent ? 'block' : 'none';
+      }
     } catch (e){ setPill('off','offline'); }
     busy = false;
   }
