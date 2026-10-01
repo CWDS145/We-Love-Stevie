@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.54 — 2026-09-17 — Monte Carlo badge tells a FAILING producer from an idle one. Root cause: v3.53 replaced the data-age rule with a producer heartbeat, but mc_tick writes that heartbeat on every tick INCLUDING the ones that fail, so producer_status was never read and eighteen days of engine exit 4 rendered as blue IDLE over 30 Aug data with two entries at 100% cash. The pill now has an amber "producer erroring" state driven by producer_status, producer_reason prints under the chart, and a stamp from another day carries its date instead of a bare hh:mm that read as this afternoon. Prior: v3.53 — 2026-08-29 — Monte Carlo badge stops going stale between rounds. Root cause: the badge derived "stale" from the age of the newest DATA row, which conflates two different facts — whether the producer is alive, and whether the field is playing. Between rounds a healthy producer correctly appends nothing for hours and the badge went amber on a working system. /meta now carries a producer heartbeat (producer_utc/status/reason/round, written by mc_tick on EVERY tick including the ones that append nothing, served by wls_ts_server v1.2). Amber now means the PRODUCER stopped; a new blue IDLE state means producer alive, field not playing, and names the round status. Falls back to the old data-age rule when producer_utc is absent. Prior: v3.52 paid-places apply refreshes header cash line + cashers box -->
+<!-- We Love Stevie Dashboard v3.55 — 2026-10-01 — Course-difficulty panel splits by TEE-TIME WAVE. Root cause: v3.42 split players 50/50 by a finish-order key that gave every back-nine starter (thru shown with '*') key 19, so wave 1 was "started on 10", not "teed off early" (Bank of Utah R1: 777 vs 774 holes when the true waves were 1080 vs ~470). Waves now break at the largest gap in the pgatour tee sheet (golf-proxy /api/teetimes); holes/to-par come from per-hole scorecards; the verdict compares waves on the same holes (hole mix cancels) with a player-clustered SE on the empirical ~0.7 per-hole sigma (was an assumed 0.45, holes independent). Subtitle middot no longer double-escaped. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -266,14 +266,14 @@ style="display:block;position:relative;z-index:2;box-sizing:border-box;width:100
   <div id="fieldRoundComplete" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
 </div>
 
-<!-- COURSE DIFFICULTY (v3.40) -->
+<!-- COURSE DIFFICULTY (v3.55) -->
 <div class="card" style="margin-bottom:16px" id="diffTrackCard">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <div style="font-size:13px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Course difficulty — 1st half vs 2nd half of field-holes</div>
+    <div style="font-size:13px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Course difficulty — early wave vs late wave (by tee time)</div>
     <span id="diffTrackInfo" style="font-size:11px;color:var(--t3)"></span>
   </div>
   <div id="diffTrackBody"></div>
-  <div style="font-size:11px;color:var(--t3);margin-top:8px">Field &Delta;total &divide; &Delta;thru per poll, cumulated. Player/hole/baseline-agnostic (differencing). SE assumes &sigma;=0.45 strokes/hole.</div>
+  <div style="font-size:11px;color:var(--t3);margin-top:8px">Waves split at the largest gap in the round&rsquo;s tee sheet (pgatour tee times). Holes and to-par from per-hole scorecards. Verdict compares the waves hole by hole on holes both have played, so hole mix cancels; SE clustered by player, empirical per-hole &sigma;.</div>
 </div>
 
 <div class="config-row">
@@ -525,7 +525,7 @@ function applyContestConfig(){
   if (typeof saveToStorage === 'function') saveToStorage();
   if (typeof window.__wlsAddonRefresh === 'function') try{ window.__wlsAddonRefresh(); }catch(e){}
 }
-const VERSION = 'v3.52 — 2026-08-23';
+const VERSION = 'v3.55 — 2026-10-01';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -1528,7 +1528,7 @@ let SCORE_HISTORY = [];
 /* ===== Round-completion bar (v3.21) — % of current round complete per tracked entry ===== */
 let roundCompleteChart = null;
 function parseThru(t){ if(t==null) return 0; const u=String(t).trim().toUpperCase(); if(u==='F'||u==='F*') return 18; const n=parseInt(u); return isNaN(n)?0:Math.min(Math.max(n,0),18); }
-/* ===== Course difficulty (v3.42) — snapshot cross-section + poll differencing ===== */
+/* ===== effectiveThru / finishedThru — leaderboard thru parsing (round-complete badge, per-entry bars, wave panel fallback) ===== */
 function effectiveThru(p){
   // strip asterisk; F => 18; tee time (h:mm AM/PM) or 0 => 0; number => holes played
   const v = String(p && p.thru != null ? p.thru : '').replace(/\*/g,'').trim();
@@ -1542,8 +1542,8 @@ function effectiveThru(p){
    understates (2026-07-19: 49.7% when the round was in fact complete). A reset-to-zero
    player is one with no holes showing, no tee time pending, and a real numeric
    leaderboard position: that player is through 18. Used ONLY by the field
-   round-complete badge and the per-entry bars — the difficulty differencing keeps
-   raw effectiveThru, because it needs true deltas, not inferred ones. */
+   round-complete badge and the per-entry bars — the wave panel reads scorecards, and uses
+   raw effectiveThru only as its pre-scorecard fallback. */
 function finishedThru(p){
   const t = effectiveThru(p);
   if (t > 0) return t;
@@ -1567,165 +1567,247 @@ function finishedThru(p){
   if (TEE.test(raw) || TEE.test(disp)) return t;
   return /\d/.test(String((p && p.position) || '')) ? 18 : t;
 }
-const DIFF_KEY = 'weLoveStevie_diffTrack_v2';
-let DIFF_STATE = null;
+/* ===== Course difficulty (v3.55) — early wave vs late wave, by tee time =====
+   Wave = which side of the largest gap in the round's tee sheet a player's group tees
+   off (golf-proxy /api/teetimes). Holes + to-par per wave come from per-hole scorecards
+   (golf-proxy /api/scorecards), so no baselines or poll differencing are needed.
+   Verdict compares the waves HOLE BY HOLE on holes both have played: on R1 afternoon the
+   late wave has only played its first ~8 holes, so comparing raw per-hole averages would
+   compare different holes, not different conditions. SE is clustered by player (each
+   player's holes are correlated) and uses the empirical per-hole spread, ~0.7 strokes.
+   Replaces v3.42, which split players 50/50 by a finish-order key that put every
+   back-nine starter (thru shown with '*') in wave 1 — i.e. it split by START TEE. */
+const WAVE_MIN_GAP_MIN = 30;      // a tee sheet with no gap this big has no wave break
+const WAVE_HOLE_MIN_N  = 5;       // players per wave on a hole before that hole is compared
+const WAVE_MIN_PLAYERS = 10;      // players per wave on compared holes before a verdict
+const WAVE_TT_TTL_MS   = 10*60*1000;
+const WAVE_SC_TTL_MS   = 3*60*1000;
+const WAVE_FETCH_MS    = 25000;   // a hung request must not hold the busy flag forever
+const WAVE_SC_CHUNK    = 60;      // /api/scorecards caps at 80 ids per call
+let WAVE_TT = null;               // { tid, round, at, err, gapMin, boundary, tz, byKey, byId }
+let WAVE_SC = null;               // { tid, round, at, err, byId: { id: [[hole, toPar], ...] } }
+let WAVE_TT_BUSY = false, WAVE_SC_BUSY = false;
+try { localStorage.removeItem('weLoveStevie_diffTrack_v2'); localStorage.removeItem('weLoveStevie_diffTrack'); } catch(e){}
 
-function parTotal(v){
-  if (v === null || v === undefined) return NaN;
-  const u = String(v).trim().toUpperCase();
-  if (u === 'E') return 0;
-  const n = parseInt(u);
-  return isNaN(n) ? NaN : n;
-}
-function diffDayKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-function loadDiffState(){
-  try { localStorage.removeItem('weLoveStevie_diffTrack'); } catch(e){}
-  let old = null;
+async function waveFetchJson(url){
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), WAVE_FETCH_MS);
   try {
-    const raw = localStorage.getItem(DIFF_KEY);
-    if (raw){ const d = JSON.parse(raw);
-      if (d && d.day === diffDayKey()){ DIFF_STATE = d; if(!DIFF_STATE.base) DIFF_STATE.base = {}; return; }
-      old = d; }
-  } catch(e){}
-  DIFF_STATE = { day: diffDayKey(), prev: null, wins: [], base: {}, r1: false };
-  // carryover: yesterday's finished totals become today's baselines
-  if (old && old.prev){
-    Object.keys(old.prev).forEach(n => { if (old.prev[n][0] >= 18) DIFF_STATE.base[n] = old.prev[n][1]; });
-  }
-  saveDiffState();
+    const resp = await fetch(url, { signal: ctl.signal });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return await resp.json();
+  } finally { clearTimeout(to); }
 }
-function saveDiffState(){ try { localStorage.setItem(DIFF_KEY, JSON.stringify(DIFF_STATE)); } catch(e){} }
-
-function captureDifficulty(){
-  if (!DIFF_STATE || DIFF_STATE.day !== diffDayKey()) loadDiffState();
-  const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
-  if (!live.length) return;
-  const cur = {};
-  live.forEach(p => {
-    if (isCutPayloadPlayer(p)) return;
-    const t = effectiveThru(p), sc = parTotal(p.total);
-    if (!isNaN(sc)) cur[p.name] = [t, sc];
-  });
-  // baselines: any player not yet started defines their own base
-  let ns = 0, nsZero = 0;
-  Object.keys(cur).forEach(n => {
-    if (cur[n][0] === 0){ DIFF_STATE.base[n] = cur[n][1]; ns++; if (cur[n][1] === 0) nsZero++; }
-  });
-  // R1 detection (sticky): not-started players overwhelmingly at even par => all baselines are 0
-  if (!DIFF_STATE.r1 && ((ns >= 5 && nsZero / ns >= 0.8) || new Date().getDay() === 4)) DIFF_STATE.r1 = true;
-  // poll differencing (fallback path)
-  if (DIFF_STATE.prev){
-    let dH = 0, dS = 0;
-    Object.keys(cur).forEach(n => {
-      const a = DIFF_STATE.prev[n]; if (!a) return;
-      const dt = cur[n][0] - a[0];
-      if (dt <= 0) return;
-      dH += dt; dS += cur[n][1] - a[1];
-    });
-    if (dH > 0){
-      DIFF_STATE.wins.push([Date.now(), dH, dS]);
-      if (DIFF_STATE.wins.length > 3000) DIFF_STATE.wins = DIFF_STATE.wins.slice(-3000);
-    }
-  }
-  DIFF_STATE.prev = cur;
-  saveDiffState();
+function waveCtx(){
+  const d = LIVE_LAST_PAYLOAD;
+  if (!d || !d.tournamentId || !d.round) return null;
+  return { tid: String(d.tournamentId), round: parseInt(d.round, 10) };
 }
-
-function waveKey(p){
-  // finish-order key: back-nine starters (raw feed shows 'F*') finished before
-  // front-nine finishers ('F' => thru 18), who finished before anyone on course.
-  // 19 > 18 > 17..1. Proxy v1.2 now returns thru=18 for both waves, so read the
-  // asterisk from thruDisplay to keep the two tee-waves apart (front vs back nine).
-  const disp = String(p.thruDisplay != null ? p.thruDisplay : (p.thru != null ? p.thru : '')).trim();
-  if (disp.indexOf('*') !== -1) return /\d/.test(String(p.position||'')) ? 19 : 0;
-  const t = parseThru(p.thru);
-  if (t > 0) return t;
-  return /\d/.test(String(p.position||'')) ? 19 : 0;
+function waveNameKeys(name){
+  // exact normalised name, plus last-name + first-initial for nickname mismatches (Matt/Matthew)
+  const n = normalizePlayerName(String(name || ''));
+  const parts = n.split(' ').filter(Boolean);
+  return { full: n, loose: parts.length > 1 ? parts[parts.length-1] + '|' + parts[0][0] : n };
 }
-function crossSection(){
-  const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
-  if (!live.length || !DIFF_STATE) return null;
+function buildWaves(tt, ctx){
+  if (!tt || tt.error) return { err: (tt && tt.error) || 'no tee-time data' };
+  if (String(tt.tournamentId) !== ctx.tid) return { err: 'tee sheet is for ' + tt.tournamentId + ', leaderboard is ' + ctx.tid };
+  const rd = (tt.rounds || []).find(r => r.round === ctx.round);
+  if (!rd) return { err: 'no R' + ctx.round + ' tee sheet yet' };
   const rows = [];
-  live.forEach(p => {
-    if (isCutPayloadPlayer(p)) return;
-    const t = effectiveThru(p), sc = parTotal(p.total), k = waveKey(p);
-    if (t <= 0 || isNaN(sc)) return;
-    let b = DIFF_STATE.base[p.name];
-    if (b === undefined){ if (DIFF_STATE.r1) b = 0; else return; }
-    rows.push([t, sc - b, k, p.name]);
+  rd.groups.forEach(g => { if (g.teeTime) g.players.forEach(p => rows.push({ id: String(p.id), name: p.name, teeTime: g.teeTime, startTee: g.startTee })); });
+  const times = [...new Set(rows.map(r => r.teeTime))].sort((a,b) => a - b);
+  if (times.length < 2) return { err: 'one tee time only' };
+  let gi = 0, gap = -1;
+  for (let i = 0; i < times.length - 1; i++){ const g = times[i+1] - times[i]; if (g > gap){ gap = g; gi = i; } }
+  const gapMin = gap / 60000;
+  if (gapMin < WAVE_MIN_GAP_MIN) return { err: 'no wave break in R' + ctx.round + ' tee sheet (largest gap ' + Math.round(gapMin) + ' min)' };
+  const boundary = times[gi+1];
+  const byKey = {}, byId = {}, fullCount = {}, looseCount = {};
+  rows.forEach(r => { const k = waveNameKeys(r.name); fullCount[k.full] = (fullCount[k.full] || 0) + 1; looseCount[k.loose] = (looseCount[k.loose] || 0) + 1; });
+  rows.forEach(r => {
+    r.wave = r.teeTime < boundary ? 1 : 2;
+    const k = waveNameKeys(r.name);
+    if (fullCount[k.full] === 1) byKey[k.full] = r;          // two players with one name: join neither
+    if (looseCount[k.loose] === 1) byKey['~' + k.loose] = r;
+    byId[r.id] = r;
   });
-  if (rows.length < 20) return null;
-  let w1 = null;
-  const keys = rows.map(r => r[2]);
-  if (Math.max.apply(null, keys) === Math.min.apply(null, keys)){
-    // all keys equal (everyone official) — recover frozen membership
-    if (!DIFF_STATE.wave) return null;
-    w1 = new Set(Object.keys(DIFF_STATE.wave).filter(n => DIFF_STATE.wave[n] === 1));
-  } else {
-    rows.sort((a,b) => b[2] - a[2]);               // earliest finishers/starters first
-    const cut = Math.floor(rows.length / 2);
-    w1 = new Set(rows.slice(0, cut).map(r => r[3]));
-    // freeze membership for end-of-day recall
-    const wv = {}; rows.forEach((r,idx) => { wv[r[3]] = idx < cut ? 1 : 2; });
-    DIFF_STATE.wave = wv; saveDiffState();
-  }
-  let H1=0,S1=0,H2=0,S2=0,n1=0,n2=0;
-  rows.forEach(r => { if (w1.has(r[3])){ H1+=r[0]; S1+=r[1]; n1++; } else { H2+=r[0]; S2+=r[1]; n2++; } });
-  if (!H1 || !H2) return null;
-  const r1=S1/H1, r2=S2/H2, se=0.45*Math.sqrt(1/H1+1/H2);
-  return { totH:H1+H2, H1, H2, r1, r2, d:r2-r1, se, mode:'snapshot', n1, n2 };
+  return { gapMin, boundary, lastEarly: times[gi], firstLate: boundary, tz: tt.timezone || undefined, byKey, byId };
+}
+function waveOf(name){
+  if (!WAVE_TT || !WAVE_TT.byKey) return null;
+  const k = waveNameKeys(name);
+  return WAVE_TT.byKey[k.full] || WAVE_TT.byKey['~' + k.loose] || null;
 }
 
-function diffSplit(){
-  const w = (DIFF_STATE && DIFF_STATE.wins) ? DIFF_STATE.wins : [];
-  if (!w.length) return null;
-  const totH = w.reduce((s,x)=>s+x[1],0);
-  if (totH < 40) return { totH };
-  const halfH = totH/2;
-  let cum=0, H1=0,S1=0,H2=0,S2=0;
-  w.forEach(x=>{
-    if (cum + x[1] <= halfH){ H1+=x[1]; S1+=x[2]; }
-    else if (cum >= halfH){ H2+=x[1]; S2+=x[2]; }
-    else { const a = halfH - cum, fr = a/x[1];
-      H1+=a; S1+=x[2]*fr; H2+=x[1]-a; S2+=x[2]*(1-fr); }
-    cum += x[1];
-  });
-  const r1=S1/H1, r2=S2/H2, se=0.45*Math.sqrt(1/H1+1/H2);
-  return { totH, H1, H2, r1, r2, d:r2-r1, se, mode:'polls' };
+async function refreshTeeTimes(ctx){
+  if (WAVE_TT_BUSY) return;
+  if (WAVE_TT && WAVE_TT.tid === ctx.tid && WAVE_TT.round === ctx.round && Date.now() - WAVE_TT.at < WAVE_TT_TTL_MS) return;
+  WAVE_TT_BUSY = true;
+  try {
+    let tt;
+    try { tt = await waveFetchJson(VERCEL_URL + '/api/teetimes'); }
+    catch(e){ tt = { error: 'tee times: ' + (e.name === 'AbortError' ? 'timeout' : e.message) }; }
+    WAVE_TT = Object.assign({ tid: ctx.tid, round: ctx.round, at: Date.now() }, buildWaves(tt, ctx));
+  } finally { WAVE_TT_BUSY = false; }
+}
+async function refreshScorecards(ctx){
+  if (WAVE_SC_BUSY || !WAVE_TT || !WAVE_TT.byId || WAVE_TT.tid !== ctx.tid || WAVE_TT.round !== ctx.round) return;
+  if (WAVE_SC && WAVE_SC.tid === ctx.tid && WAVE_SC.round === ctx.round && Date.now() - WAVE_SC.at < WAVE_SC_TTL_MS) return;
+  // every id on the round's tee sheet: the scorecard, not the leaderboard thru (which the feed
+  // resets to 0 once a round is official), decides what has been played
+  const ids = Object.keys(WAVE_TT.byId);
+  if (!ids.length) return;
+  WAVE_SC_BUSY = true;
+  try {
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += WAVE_SC_CHUNK) chunks.push(ids.slice(i, i + WAVE_SC_CHUNK));
+    const parts = await Promise.all(chunks.map(c =>
+      waveFetchJson(VERCEL_URL + '/api/scorecards?tournamentId=' + encodeURIComponent(ctx.tid) + '&ids=' + c.join(','))
+        .then(j => ({ ok: true, j, n: c.length }), e => ({ ok: false, n: c.length, e: e.name === 'AbortError' ? 'timeout' : e.message }))));
+    // an id with no usable scorecard is left out of byId; verdictSplit decides whether that
+    // matters (a player who has not teed off may legitimately have no scorecard yet)
+    const byId = {}, errs = [];
+    parts.forEach(pt => {
+      if (!pt.ok){ errs.push(pt.e); return; }
+      (pt.j.players || []).forEach(p => {
+        if (!p || p.error) return;
+        const rd = (p.rounds || []).find(r => r.roundNumber === ctx.round);
+        const hs = [];
+        if (rd) (rd.holes || []).forEach(h => { const s = parseInt(h.score, 10), par = parseInt(h.par, 10); if (!isNaN(s) && !isNaN(par)) hs.push([h.hole, s - par]); });
+        byId[String(p.playerId)] = hs;
+      });
+    });
+    WAVE_SC = { tid: ctx.tid, round: ctx.round, at: Date.now(), byId, err: errs.length ? errs.join('; ') : null };
+  } finally { WAVE_SC_BUSY = false; }
+}
+async function refreshWaveData(){
+  const ctx = waveCtx();
+  if (!ctx) return;
+  await refreshTeeTimes(ctx);
+  await refreshScorecards(ctx);
+  renderDifficulty();
 }
 
 function verdictSplit(){
-  const xs = crossSection();
-  if (xs) return xs;
-  return diffSplit();
+  const ctx = waveCtx();
+  if (!ctx || !WAVE_TT || WAVE_TT.tid !== ctx.tid || WAVE_TT.round !== ctx.round) return null;
+  if (WAVE_TT.err) return { err: WAVE_TT.err };
+  const live = (LIVE_LAST_PAYLOAD && LIVE_LAST_PAYLOAD.players) ? LIVE_LAST_PAYLOAD.players : [];
+  const sc = (WAVE_SC && WAVE_SC.tid === ctx.tid && WAVE_SC.round === ctx.round) ? WAVE_SC.byId : null;
+  // per wave: players, holes, to-par — from scorecards only. Until they load, holes from leaderboard thru.
+  const W = { 1: { n:0, H:0, S:0, pl:[] }, 2: { n:0, H:0, S:0, pl:[] } };
+  let unmatched = 0, pending = 0, missing = 0;
+  const used = new Set();
+  live.forEach(p => {
+    if (isCutPayloadPlayer(p)) return;
+    const w = waveOf(p.name);
+    if (!w){ unmatched++; return; }
+    if (used.has(w.id)) return;                        // one tee-sheet row feeds one player at most
+    used.add(w.id);
+    const g = W[w.wave];
+    if (sc){
+      const holes = sc[w.id];
+      // finishedThru, not effectiveThru: the feed resets a finished player's thru to 0 once the round is official
+      if (!holes){ if (finishedThru(p) > 0) missing++; return; }        // started, but no scorecard came back
+      if (!holes.length){ if (effectiveThru(p) > 0) pending++; return; } // teed off since the last pull
+      g.n++; g.H += holes.length; holes.forEach(h => { g.S += h[1]; }); g.pl.push(holes);
+    } else {
+      const t = effectiveThru(p);
+      if (t > 0){ g.n++; g.H += t; }
+    }
+  });
+  const out = { round: ctx.round, gapMin: WAVE_TT.gapMin, lastEarly: WAVE_TT.lastEarly, firstLate: WAVE_TT.firstLate, tz: WAVE_TT.tz,
+                n1: W[1].n, n2: W[2].n, H1: W[1].H, H2: W[2].H, unmatched, pending, missing, scErr: WAVE_SC && WAVE_SC.err, hasSc: !!sc };
+  if (!sc) return out;
+  out.r1 = W[1].H ? W[1].S / W[1].H : NaN;
+  out.r2 = W[2].H ? W[2].S / W[2].H : NaN;
+  // hole-matched comparison: per hole, late mean − early mean, weighted by nE·nL/(nE+nL)
+  const st = { 1: {}, 2: {} };
+  [1,2].forEach(k => W[k].pl.forEach(hs => hs.forEach(h => {
+    const a = st[k][h[0]] || (st[k][h[0]] = { n:0, s:0 }); a.n++; a.s += h[1];
+  })));
+  const common = [];
+  for (let h = 1; h <= 18; h++){
+    const e = st[1][h], l = st[2][h];
+    if (e && l && e.n >= WAVE_HOLE_MIN_N && l.n >= WAVE_HOLE_MIN_N)
+      common.push({ h, nE: e.n, nL: l.n, mE: e.s / e.n, mL: l.s / l.n, w: e.n * l.n / (e.n + l.n) });
+  }
+  out.common = common.map(c => c.h);
+  if (!common.length) return out;
+  const Wt = common.reduce((s,c) => s + c.w, 0);
+  const ch = {}; common.forEach(c => { ch[c.h] = c; });
+  const m1 = common.reduce((s,c) => s + c.w * c.mE, 0) / Wt;
+  const m2 = common.reduce((s,c) => s + c.w * c.mL, 0) / Wt;
+  // cluster-robust variance: each player's summed weighted residuals is one draw
+  let ss = 0, sn = 0;
+  const clusterVar = (k) => {
+    let v = 0, G = 0;
+    W[k].pl.forEach(hs => {
+      let ci = 0, usedP = false;
+      hs.forEach(h => {
+        const c = ch[h[0]]; if (!c) return;
+        const m = k === 1 ? c.mE : c.mL, n = k === 1 ? c.nE : c.nL;
+        const r = h[1] - m;
+        ci += (c.w / Wt) * r / n; usedP = true; ss += r * r; sn++;
+      });
+      if (usedP){ v += ci * ci; G++; }
+    });
+    return { v: G > 1 ? v * G / (G - 1) : NaN, G };
+  };
+  const vE = clusterVar(1), vL = clusterVar(2);
+  out.gE = vE.G; out.gL = vL.G;
+  out.sigma = sn > 1 ? Math.sqrt(ss / (sn - 1)) : NaN;
+  if (vE.G < WAVE_MIN_PLAYERS || vL.G < WAVE_MIN_PLAYERS) return out;
+  out.m1 = m1; out.m2 = m2; out.d = m2 - m1; out.se = Math.sqrt(vE.v + vL.v);
+  out.ok = isFinite(out.d) && isFinite(out.se) && out.se > 0;
+  return out;
 }
 
+function waveClock(ms, tz){
+  // an unrecognised zone name throws RangeError — that must not take the poll's render down with it
+  try { return new Date(ms).toLocaleTimeString([], { hour:'numeric', minute:'2-digit', timeZone: tz, timeZoneName: 'short' }); }
+  catch(e){ return new Date(ms).toLocaleTimeString([], { hour:'numeric', minute:'2-digit', timeZoneName: 'short' }); }
+}
 function renderDifficulty(){
   const host = document.getElementById('diffTrackBody');
   const info = document.getElementById('diffTrackInfo');
   if (!host) return;
-  if (!DIFF_STATE) loadDiffState();
   const r = verdictSplit();
-  if (!r){ host.innerHTML='<div style="font-size:11px;color:var(--t3)">Waiting for live data.</div>'; if(info)info.textContent=''; return; }
-  if (info) info.textContent = Math.round(r.totH) + ' field-holes' + (r.mode ? ' &middot; ' + (r.mode==='snapshot'?'snapshot (all holes today)':'poll differencing') : '');
-  if (!r.H1){ host.innerHTML='<div style="font-size:11px;color:var(--t3)">Accumulating — poll-diff verdict at 40+ field-holes.</div>'; return; }
-  const f=v=>(v>=0?'+':'')+v.toFixed(3);
-  const fr=v=>(v>=0?'+':'')+(v*18).toFixed(2);
-  const t=Math.abs(r.d/r.se);
-  const dir=r.d>0?'LATE HALF playing HARDER':'LATE HALF playing EASIER';
-  const col=r.d>0?'var(--red)':'var(--green)';
-  const sig=t>=2?('diff = '+t.toFixed(1)+' SE'):'within noise ('+t.toFixed(1)+' SE)';
-  const l1 = r.mode==='snapshot' ? 'Early wave' : '1st half';
-  const l2 = r.mode==='snapshot' ? 'Late wave' : '2nd half';
-  const c1 = r.mode==='snapshot' && r.n1 ? ' (n='+r.n1+')' : '';
-  const c2 = r.mode==='snapshot' && r.n2 ? ' (n='+r.n2+')' : '';
-  host.innerHTML=
+  if (!r){ host.innerHTML='<div style="font-size:11px;color:var(--t3)">Waiting for live data and tee sheet.</div>'; if(info)info.textContent=''; return; }
+  if (r.err){ host.innerHTML='<div style="font-size:11px;color:var(--t3)">No wave split: '+escapeHtml(r.err)+'</div>'; if(info)info.textContent=''; return; }
+  if (info) info.textContent = Math.round(r.H1 + r.H2) + ' field-holes · R' + r.round + ' · wave break ' + waveClock(r.lastEarly, r.tz) + ' → ' + waveClock(r.firstLate, r.tz) + ' (' + Math.round(r.gapMin) + ' min gap)';
+  const f  = v => isFinite(v) ? (v>=0?'+':'')+v.toFixed(3) : '—';
+  const fr = v => isFinite(v) ? (v>=0?'+':'')+(v*18).toFixed(2) : '—';
+  const td = 'padding:4px 6px;text-align:right;color:var(--t1)';
+  const row = (lab, col, n, H, raw, mt) =>
+    '<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:'+col+'">'+lab+' (n='+n+')</td>'+
+    '<td style="padding:4px 6px;text-align:right;color:var(--t2)">'+Math.round(H)+'</td>'+
+    '<td style="'+td+'">'+f(raw)+'</td><td style="'+td+'">'+fr(raw)+'</td><td style="'+td+'">'+f(mt)+'</td></tr>';
+  let html =
     '<table style="width:100%;font-size:12px;font-family:var(--mono);border-collapse:collapse">'+
-    '<tr style="color:var(--t3);font-size:11px"><td style="padding:3px 6px">Segment</td><td style="padding:3px 6px;text-align:right">Holes</td><td style="padding:3px 6px;text-align:right">To-par / hole</td><td style="padding:3px 6px;text-align:right">Round-equiv</td></tr>'+
-    '<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--amber-t)">'+l1+c1+'</td><td style="padding:4px 6px;text-align:right;color:var(--t2)">'+Math.round(r.H1)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+f(r.r1)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+fr(r.r1)+'</td></tr>'+
-    '<tr style="border-top:1px solid var(--border)"><td style="padding:4px 6px;color:var(--blue)">'+l2+c2+'</td><td style="padding:4px 6px;text-align:right;color:var(--t2)">'+Math.round(r.H2)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+f(r.r2)+'</td><td style="padding:4px 6px;text-align:right;color:var(--t1)">'+fr(r.r2)+'</td></tr>'+
-    '</table>'+
-    '<div style="margin-top:8px;font-size:12px"><span style="color:'+col+';font-weight:600">'+dir+' by '+Math.abs(r.d*18).toFixed(2)+' strokes/round</span> <span style="color:var(--t3)">&plusmn; '+(r.se*18).toFixed(2)+' &middot; '+sig+'</span></div>';
+    '<tr style="color:var(--t3);font-size:11px"><td style="padding:3px 6px">Wave (by tee time)</td><td style="padding:3px 6px;text-align:right">Holes</td><td style="padding:3px 6px;text-align:right">To-par / hole</td><td style="padding:3px 6px;text-align:right">Round-equiv</td><td style="padding:3px 6px;text-align:right">Same holes</td></tr>'+
+    row('Early wave', 'var(--amber-t)', r.n1, r.H1, r.r1, r.m1)+
+    row('Late wave',  'var(--blue)',    r.n2, r.H2, r.r2, r.m2)+
+    '</table>';
+  if (!r.hasSc){
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--t3)">Loading scorecards…</div>';
+  } else if (!r.H1 && !r.H2){
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--t3)">'+(r.missing ? 'Scorecards unavailable — no verdict.' : 'No R'+r.round+' holes played yet.')+'</div>';
+  } else if (!r.ok){
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--t3)">No verdict yet — needs '+WAVE_MIN_PLAYERS+'+ players per wave on holes both waves have played ('+WAVE_HOLE_MIN_N+'+ each). Shared holes so far: '+((r.common&&r.common.length)?r.common.join(','):'none')+'.</div>';
+  } else {
+    const t = Math.abs(r.d / r.se);
+    const dir = r.d > 0 ? 'LATE WAVE playing HARDER' : 'LATE WAVE playing EASIER';
+    const col = r.d > 0 ? 'var(--red)' : 'var(--green)';
+    const sig = t >= 2 ? ('diff = '+t.toFixed(1)+' SE') : ('within noise ('+t.toFixed(1)+' SE)');
+    html += '<div style="margin-top:8px;font-size:12px"><span style="color:'+col+';font-weight:600">'+dir+' by '+Math.abs(r.d*18).toFixed(2)+' strokes/round</span> <span style="color:var(--t3)">&plusmn; '+(r.se*18).toFixed(2)+' &middot; '+sig+'</span></div>'+
+      '<div style="margin-top:4px;font-size:11px;color:var(--t3)">Same-holes comparison on '+r.common.length+' holes both waves have played ('+r.common.join(',')+') &middot; '+r.gE+' early / '+r.gL+' late players &middot; per-hole &sigma; '+r.sigma.toFixed(2)+'</div>';
+  }
+  if (r.missing) html += '<div style="margin-top:4px;font-size:11px;color:var(--amber-t)">'+r.missing+' started player(s) have no scorecard'+(r.scErr ? ' ('+escapeHtml(r.scErr)+')' : '')+' — left out.</div>';
+  if (r.pending) html += '<div style="margin-top:4px;font-size:11px;color:var(--t3)">'+r.pending+' player(s) teed off since the last scorecard pull — counted next refresh.</div>';
+  if (r.unmatched) html += '<div style="margin-top:4px;font-size:11px;color:var(--amber-t)">'+r.unmatched+' leaderboard player(s) not found on the tee sheet — left out.</div>';
+  host.innerHTML = html;
 }
 
 function isCutPayloadPlayer(p){
@@ -1773,8 +1855,8 @@ function renderFieldRoundComplete(){
 
 function renderRoundComplete(){
   renderFieldRoundComplete();
-  captureDifficulty();
   renderDifficulty();
+  refreshWaveData();
   if (scoreChart) scoreChart.update('none');
   const canvas=document.getElementById('roundCompleteChart'); if(!canvas) return;
   const info=document.getElementById('roundCompleteInfo');
@@ -1958,11 +2040,11 @@ function renderScoreChart() {
       c.textBaseline = 'middle';
       c.fillText(txt, bx + padX, by + 12);
       const r = (typeof verdictSplit === 'function') ? verdictSplit() : null;
-      if (r && r.H1){
+      if (r && r.ok){
         const harder = r.d > 0;
         const fre = v => (v >= 0 ? '+' : '') + (v*18).toFixed(2);
-        const l1 = 'Early ' + fre(r.r1);
-        const l2 = 'Late  ' + fre(r.r2) + (Math.abs(r.d/r.se) < 2 ? ' (noise)' : '');
+        const l1 = 'Early ' + fre(r.m1);
+        const l2 = 'Late  ' + fre(r.m2) + (Math.abs(r.d/r.se) < 2 ? ' (noise)' : '');
         const col2 = harder ? '#ef4444' : '#22c55e';
         const w2 = Math.max(c.measureText(l1).width, c.measureText(l2).width);
         const bh = 40, bx2 = a.left + 6, by2 = a.bottom - bh - 6;
