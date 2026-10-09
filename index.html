@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.56 — 2026-10-09 — Monte Carlo engine follows the DROPPED FILE. Root cause: the engine's contest was set by an auto-roll that guessed the contest product; on 8 Oct it pinned 196416157 (moklovin in, SevereChafing/PeshtigoIndians out) while the operator was watching 196417201, so the MC chart drew Mok. handleFile already read the id from contest-standings-<id>.zip; it now POSTs it to wls_ts_server /contest, which rewrites ~/watch-dk.pin, and a systemd path unit re-points watch-dk at once. The MC panel now warns in amber when the chart is not the dropped file's contest, and says which stage stopped it (pin / engine / not redrawn yet). -->
+<!-- We Love Stevie Dashboard v3.57 — 2026-10-09 — New tournament name (Set), End Tournament and HARD RESET all ERASE THE PRIOR WEEK. Root cause of the leftovers: "prior week" had no identity — Set only saved the name, End Tournament left the contest key, score-chart window and a Monte Carlo chart still drawing last week's contest, and after HARD RESET or the Monday wipe the 8781 bridge (lastM=0) re-loaded last week's file. Now the prior week is a CLOSED CONTEST ID: erasing closes the board's contest; a closed contest is refused by the bridge, asked about on Poll now / drop, never saved, restored or drawn, and other tabs showing it clear themselves. The bridge also skips files from before this Monday (Poll now overrides); The MC chart draws only the board's contest or the engine's current one. A new name (Set) erases the board only if its standings file is from before this Monday (last week) — this week's board is just renamed; the file date also decides whether a load continues the score history (operator's rule, 2026-10-09). v3.56 — Monte Carlo engine follows the DROPPED FILE (POST /contest -> ~/watch-dk.pin -> path unit -> watch-dk); amber warning when the chart is not the board's contest. -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -475,6 +475,44 @@ const DK_MULTIPLE = { double_up: 2, triple_up: 3, '5x': 5 };
 let CONTEST_TYPE = 'double_up';   // '50_50' | 'double_up' | 'triple_up' | '5x' — persisted
 let ENTRY_FEE = 5;                // dollars — persisted
 let PAID_PLACES = null;           // v3.49: fixed paid places from contest details (overlay-safe); null = auto % rule — persisted
+/* v3.57 — the prior week is a CLOSED CONTEST ID. Set (new week), End Tournament and HARD RESET
+   close the board's contest; a closed contest is refused everywhere (bridge, Poll now and drops
+   ask first, saves, page restore, other tabs, the MC chart) until reopened. */
+const CLOSED_KEY = 'weLoveStevie_closedContests';
+function closedContests() { try { const a = JSON.parse(localStorage.getItem(CLOSED_KEY) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch(e) { return []; } }
+function isClosedContest(id) { return !!id && /^[0-9]{6,12}$/.test(String(id)) && closedContests().indexOf(String(id)) >= 0; }
+function closeContest(id) {
+  if (!id || !/^[0-9]{6,12}$/.test(String(id)) || isClosedContest(id)) return;
+  const a = closedContests(); a.push(String(id));
+  try { localStorage.setItem(CLOSED_KEY, JSON.stringify(a.slice(-50))); } catch(e) {}
+}
+function reopenContest(id) {
+  if (!isClosedContest(id)) return;
+  try { localStorage.setItem(CLOSED_KEY, JSON.stringify(closedContests().filter(x => x !== String(id)))); } catch(e) {}
+}
+function normName(t) { return String(t || '').trim().replace(/\s+/g, ' ').toLowerCase(); }
+/* v3.57 — the WEEK of a board is the date of its contest's first standings file (File.lastModified
+   for a drop, the bridge's file mtime for an auto-load), not when it was loaded: a board whose file is from
+   before this Monday 00:00 is last week's. That one fact decides whether Set erases (operator's
+   rule: "erase only if last week's") and whether a load continues the score history. */
+function thisMondayMs() { const d = new Date(); d.setHours(0,0,0,0); const w = d.getDay(); d.setDate(d.getDate() - (w === 0 ? 6 : w - 1)); return d.getTime(); }
+let BOARD_FILE_MS = null;         // v3.57: first standings-file time of the board's contest (ms) — persisted
+/* contest id -> time of its FIRST standings file, kept apart from the board so the Monday wipe, a
+   fresh tab or HARD RESET cannot lose it (a Monday re-download of Sunday's finish stays last week) */
+const CONTEST_FIRST_KEY = 'weLoveStevie_contestFirstFile';
+function contestWeekMs(id, fileMs) {
+  if (!id || !/^[0-9]{6,12}$/.test(String(id))) return fileMs;
+  let m = {}; try { m = JSON.parse(localStorage.getItem(CONTEST_FIRST_KEY) || '{}') || {}; } catch(e) { m = {}; }
+  const k = String(id), first = (m[k] > 0 && m[k] < fileMs) ? m[k] : fileMs;
+  if (m[k] !== first) {
+    m[k] = first;
+    const ids = Object.keys(m).sort((a, b) => m[b] - m[a]).slice(0, 60), keep = {}; ids.forEach(i => keep[i] = m[i]);
+    try { localStorage.setItem(CONTEST_FIRST_KEY, JSON.stringify(keep)); } catch(e) {}
+  }
+  return first;
+}
+function boardIsLastWeek() { return ENTRIES.length > 0 && BOARD_FILE_MS !== null && BOARD_FILE_MS < thisMondayMs(); }
+let BOARD_NAME = null;            // v3.57: name the board was loaded under or last Set to (never the auto-saved name box) — persisted
 let SCREEN_CONTEST = null;        // v3.56: contest id of the board on screen, from the loaded file's name; '' = name had no id; null = nothing loaded — persisted with the board, read by the MC panel
 function dkRake(fee, type){
   const row = DK_COMMISSION.find(r => fee >= r[0] && fee <= r[1]) || DK_COMMISSION[DK_COMMISSION.length-1];
@@ -526,7 +564,7 @@ function applyContestConfig(){
   if (typeof saveToStorage === 'function') saveToStorage();
   if (typeof window.__wlsAddonRefresh === 'function') try{ window.__wlsAddonRefresh(); }catch(e){}
 }
-const VERSION = 'v3.56 — 2026-10-09';
+const VERSION = 'v3.57 — 2026-10-09';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -603,8 +641,15 @@ function clearCashOverride() {
 }
  
 function hardReset() {
-  if (!confirm('HARD RESET will wipe all stored data, cash corrections, and score history. Continue?')) return;
+  /* v3.57: a LAST-WEEK board's contest is closed so the reload cannot pull it back in; a this-week
+     board is not (operator's rule: only last week's is erased) — the bridge reloads it fresh, as in v3.56 */
+  const sc = boardIsLastWeek() ? SCREEN_CONTEST : null;
+  if (!confirm('HARD RESET will wipe all stored data, cash corrections, score history and this board\'s Monte Carlo chart.' +
+      (sc ? '\n\nContest ' + sc + ' is last week\'s and will be closed: its file will not load again unless you reopen it (Poll now / drop it and confirm).' : '') +
+      '\n\nContinue?')) return;
+  closeContest(sc);
   try {
+    if (sc) localStorage.removeItem('weLoveStevie_contestKey');
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem('weLoveStevieDashboard_history');
     localStorage.removeItem('weLoveStevie_waves');
@@ -756,12 +801,21 @@ function updateCutStatus() {
  
 function isPlayerCut(p) { return CUT_PLAYERS.has(p); }
  
-function saveToStorage() {
+function saveToStorage(allowEmpty) {
+  /* v3.57: a tab with no board (fresh after an erase) must not overwrite another tab's board on
+     its live/config saves — only Set and the erase itself save an empty board (the name). A
+     board whose contest was closed (in any tab) is the prior week: never written back. */
+  if (!ENTRIES.length) {
+    if (allowEmpty !== true) return;
+    // Set / erase with no board here saves only the name, and never over another tab's board
+    try { const st = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); if (st && st.entries && st.entries.length) return; } catch(e) {}
+  }
+  if (ENTRIES.length && isClosedContest(SCREEN_CONTEST)) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       entries: ENTRIES, odds: ODDS, freq: FREQ, oddsReal: Array.from(ODDS_REAL),
       total: TOTAL, cashOverride: CASH_OVERRIDE, contestType: CONTEST_TYPE, entryFee: ENTRY_FEE, paidPlaces: PAID_PLACES,
-      uploadTime: lastUploadTime, screenContest: SCREEN_CONTEST,
+      uploadTime: lastUploadTime, screenContest: SCREEN_CONTEST, boardName: BOARD_NAME, boardFileMs: BOARD_FILE_MS,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value,
       cutManual: Array.from(CUT_MANUAL)
@@ -786,6 +840,10 @@ function fmt(ts) {
 }
  
 function loadData(d, fromStorage = false) {
+  if (fromStorage) {   // v3.57; pre-3.57 saves: the saved name, and the upload time as the file time
+    BOARD_NAME = d.boardName !== undefined ? d.boardName : (d.tournament || null);
+    BOARD_FILE_MS = d.boardFileMs != null ? d.boardFileMs : (d.uploadTime ? Date.parse(d.uploadTime) : null);
+  }
   if (fromStorage) { if (d.screenContest !== undefined) SCREEN_CONTEST = d.screenContest; else { try { SCREEN_CONTEST = localStorage.getItem('weLoveStevie_contestKey') || null; } catch(e) {} } }   // v3.56; pre-3.56 saves: the key v3.55 wrote with that board
   TOTAL = d.total; FREQ = d.freq; ENTRIES = d.entries;
   ODDS = {}; Object.keys(d.odds || {}).forEach(k => { ODDS[normalizePlayerName(k)] = d.odds[k]; }); // v3.48: re-key (migrates pre-3.48 raw-key saved state)
@@ -871,9 +929,29 @@ function refreshViews() {
 }
  
 function updateTournament() {
-  const tourney = document.getElementById('tournamentInput').value.trim();
+  const input = document.getElementById('tournamentInput');
+  const tourney = input.value.trim();
+  /* v3.57 — operator's rule: a new tournament name erases the board ONLY if it is last week's
+     (its standings file is from before this Monday, boardIsLastWeek); this week's board is just
+     renamed, so fixing a typo is safe. "New" = different from the name the board was loaded
+     under or last Set to (BOARD_NAME), never the name box, which every save copies. Erasing =
+     End Tournament minus the ZIP: the board's contest is closed. */
+  if (tourney && normName(tourney) !== normName(BOARD_NAME) && boardIsLastWeek()) {
+    const onScreen = SCREEN_CONTEST ? 'contest ' + SCREEN_CONTEST : 'the board';
+    const fileDay = new Date(BOARD_FILE_MS).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+    if (!confirm('On screen: ' + onScreen + (BOARD_NAME ? ' ("' + BOARD_NAME + '")' : '') + ', standings file from ' + fileDay + ' — last week.\n\n' +
+        'OK = erase it for "' + tourney + '": board, score history and Monte Carlo chart' + (SCREEN_CONTEST ? ', and close contest ' + SCREEN_CONTEST : '') +
+        '. No ZIP is saved (End Tournament & Save keeps one).\n\nCancel = change nothing.')) { input.value = BOARD_NAME || ''; saveToStorage(); return; }   // persist the reverted name (an auto-save may have stored the typed one)
+    resetForNextTournament();
+    input.value = tourney;
+    BOARD_NAME = tourney;
+    saveToStorage(true);
+    showStatus('Erased ' + onScreen + ' (last week). The RESULTS bridge loads this week\'s file as soon as it is there.', true);
+    return;
+  }
+  BOARD_NAME = tourney || BOARD_NAME;
   if (TOTAL > 0) document.getElementById('headerSub').textContent = 'DraftKings' + (tourney ? ' — ' + tourney : '') + ' — ' + TOTAL + ' entries — Cash line: ' + CASH + ' pts (' + (CASH_OVERRIDE !== null ? 'manual' : 'auto') + ')';
-  saveToStorage();
+  saveToStorage(true);
 }
  
 function parseCSV(text) {
@@ -932,6 +1010,16 @@ function showStatus(msg, ok) {
  
 function handleFile(file) {
   if (!file) return;
+  /* v3.57 — a closed contest is a prior week. Loading it (a drop, or the bridge's Poll now)
+     reopens it, so ask, naming the file and the contest. */
+  const closedKey = ((file.name || '').match(/contest-standings-(\d+)/i) || [])[1] || '';
+  if (isClosedContest(closedKey)) {
+    if (!confirm('Contest ' + closedKey + ' (' + file.name + ') was closed as a prior week.\n\nOK = reopen it and load it (the Monte Carlo engine is pointed back at it).\nCancel = leave it closed.')) {
+      showStatus('Not loaded: contest ' + closedKey + ' is closed (prior week).', false);
+      return false;
+    }
+    reopenContest(closedKey);
+  }
   const reader = new FileReader();
   reader.onload = async function(e) {
     try {
@@ -958,7 +1046,13 @@ function handleFile(file) {
       const fileKey = ((file.name || '').match(/contest-standings-(\d+)/i) || [])[1] || '';
       const priorKey = localStorage.getItem('weLoveStevie_contestKey') || '';
       if (fileKey) { try { localStorage.setItem('weLoveStevie_contestKey', fileKey); } catch(e) {} }
-      const sameTournament = (fileKey && priorKey && fileKey === priorKey) || (priorTourney && currentTourney && priorTourney === currentTourney);
+      /* v3.57: a board from last week replaced by this week's file is a new week, whatever the ids
+         or the name box say — no score history carries over (a tab left open across Monday). Within
+         one week the v3.56 rule stands (switching between this week's contests keeps history). */
+      const fileMs = (file.lastModified > 0) ? file.lastModified : Date.now();
+      const weekMs = contestWeekMs(fileKey, fileMs);   // the contest's week = its FIRST file's, remembered across wipes and tabs
+      const weekChanged = boardIsLastWeek() && weekMs >= thisMondayMs() && !(fileKey && fileKey === SCREEN_CONTEST);
+      const sameTournament = !weekChanged && ((fileKey && priorKey && fileKey === priorKey) || (priorTourney && currentTourney && priorTourney === currentTourney));
       try {
         localStorage.removeItem(STORAGE_KEY);
         if (!sameTournament) localStorage.removeItem(HIST_KEY);
@@ -977,6 +1071,12 @@ function handleFile(file) {
       document.getElementById('cashLineInput').value = '';
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
+      /* v3.57: the board's name and week. New week: last week's name (box unchanged) does not carry
+         over; a name typed for the new week does. Same week: keep the name, or take what is typed. */
+      { const box = document.getElementById('tournamentInput').value.trim();
+        if (weekChanged) { if (box && normName(box) === normName(BOARD_NAME)) { document.getElementById('tournamentInput').value = ''; BOARD_NAME = null; } else BOARD_NAME = box || null; }
+        else if (!BOARD_NAME) BOARD_NAME = box || null; }
+      BOARD_FILE_MS = weekMs;
       SCREEN_CONTEST = fileKey;   // v3.56: saved with the board by loadData below
       loadData(data);
       recordScoreSnapshot();
@@ -987,6 +1087,7 @@ if (isLive) fetchLive(); else startLive();   // v3.31: live odds permanent — r
       const loadedMsg = 'Loaded ' + data.total + ' entries, ' + data.oddsReal.length + ' players with real odds' + (isZip ? ' (from ZIP)' : '') + histMsg + '.';
       showStatus(loadedMsg, true);
       // v3.56: the file name is the contest — point the Monte Carlo engine at it
+      if (window.WLS_MC && window.WLS_MC.refresh) window.WLS_MC.refresh();   // v3.57: judge the new board now, not at the next 2-min poll
       if (fileKey && window.WLS_MC && window.WLS_MC.pinContest) {
         window.WLS_MC.pinContest(fileKey, file.name).then(function(r) {
           if (r && r.changed) showStatus(loadedMsg + ' Contest ' + fileKey + ' sent to the Monte Carlo engine — the panel warns if it does not take.', true);
@@ -2338,12 +2439,21 @@ async function confirmEndTournament() {
   }
 }
  
-function resetForNextTournament() {
+/* fromOtherTab (v3.57): another tab closed this board's contest — clear this tab's screen and
+   memory only; storage was already erased there and may already hold the NEW week's board. */
+function resetForNextTournament(fromOtherTab) {
   if (isLive) stopLive();
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(HIST_KEY);
-  } catch(e) {}
+  if (!fromOtherTab) {
+    closeContest(SCREEN_CONTEST);   // v3.57: the prior week, by identity
+    /* v3.57: storage holds ONE board, maybe another tab's (a different contest loaded there):
+       erase it only if it is this board (or empty) */
+    try {
+      let st = null; try { st = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'); } catch(e) {}
+      const mine = !st || !(st.entries && st.entries.length) || (st.screenContest == null ? null : String(st.screenContest)) === (SCREEN_CONTEST == null ? null : String(SCREEN_CONTEST));
+      if (mine) { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(HIST_KEY); }
+      if (localStorage.getItem('weLoveStevie_contestKey') === SCREEN_CONTEST) localStorage.removeItem('weLoveStevie_contestKey');
+    } catch(e) {}
+  }
   ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
   CUT_PLAYERS = new Set(); CUT_MANUAL = new Set(); CUT_LIVE = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
   POWER_CACHE = null; CASH_OVERRIDE = null; CASH = 0;
@@ -2353,6 +2463,13 @@ function resetForNextTournament() {
   LIVE_LAST_PAYLOAD = null;
   lastUploadTime = null;
   SCREEN_CONTEST = null;   // v3.56
+  BOARD_NAME = null;       // v3.57
+  BOARD_FILE_MS = null;    // v3.57
+  X_START = 0; X_END = null;   // v3.57: score-tracker window of the old week
+  // v3.57: panels that keep their last render after live stops — last week's until cleared
+  ['liveBody', 'fieldRoundComplete', 'diffTrackBody'].forEach(id => { const n = document.getElementById(id); if (n) n.innerHTML = ''; });
+  { const xw = document.getElementById('xWindowControls'); if (xw) xw.style.display = 'none'; }
+  if (window.WLS_MC && window.WLS_MC.reset) window.WLS_MC.reset();   // v3.57: redraw the MC chart now, without the closed contest
   currentSingleEntry = null;
   cmpEntries = [];
  
@@ -2388,6 +2505,16 @@ function resetForNextTournament() {
 // INIT
 // ============================================================================
  
+// v3.57 — another tab closed the contest this tab shows: clear it here too (screen + memory
+// only; never writes, so tabs cannot ping-pong).
+window.addEventListener('storage', function (e) {
+  if (e.key !== CLOSED_KEY) return;
+  if (SCREEN_CONTEST && isClosedContest(SCREEN_CONTEST)) {
+    resetForNextTournament(true);
+    showStatus('Another dashboard tab closed this contest (new week) — this tab was cleared too.', true);
+  }
+});
+
 (function init() {
   const now = new Date();
   const monday = new Date(now);
@@ -2398,7 +2525,8 @@ function resetForNextTournament() {
  
   const stored = loadFromStorage();
   const uploadTime = stored && stored.uploadTime ? new Date(stored.uploadTime).getTime() : 0;
-  const isStale = uploadTime < mondayTs;
+  const storedContest = stored ? (stored.screenContest !== undefined ? stored.screenContest : (function(){ try { return localStorage.getItem('weLoveStevie_contestKey'); } catch(e) { return null; } })()) : null;
+  const isStale = uploadTime < mondayTs || isClosedContest(storedContest);   // v3.57: or its contest was closed
  
   if (stored && !isStale) {
     loadData(stored, true);
@@ -2416,6 +2544,9 @@ function resetForNextTournament() {
       SCREEN_CONTEST = null;   // v3.56
     }
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
+    // v3.57: Set (new week) saves the new name with no board; keep it across a reload
+    try { const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+          if (raw.tournament && !(raw.entries && raw.entries.length)) { document.getElementById('tournamentInput').value = raw.tournament; BOARD_NAME = raw.boardName || raw.tournament; } } catch(e) {}
   }
   try{updatePaidInfo();}catch(e){}
   startLive();
@@ -2559,14 +2690,26 @@ function resetForNextTournament() {
   function nowStr() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
   function bfetch(path) { return fetch(BRIDGE + path, { cache: 'no-store', targetAddressSpace: 'loopback' }); }
 
-  async function pollOnce() {
+  async function pollOnce(force) {   // force (v3.57) = the operator pressed Poll now
+    force = force === true;
     if (busy) return; busy = true;
     try {
       var meta = await (await bfetch('/meta')).json();
       if (!meta.name) { setStatus('warn', 'bridge up \u2014 no matching file'); busy = false; return; }
-      if (meta.mtime === lastM) { setStatus('on', 'no change \u00b7 ' + nowStr()); busy = false; return; }
+      /* v3.57 — never auto-load a prior week: a CLOSED contest (erased by Set / End Tournament /
+         HARD RESET), or a file last written before this Monday (after the Monday wipe it is last
+         week's; a contest finishing on Monday rewrites its file when play resumes). Checked BEFORE
+         the no-change test so the light says so. Poll now loads it anyway (a closed contest asks
+         in handleFile); an unchanged file already on screen stays "no change", as in v3.56. */
+      var fid = ((meta.name || '').match(/contest-standings-(\d+)/i) || [])[1] || '';
+      var closed = typeof isClosedContest === 'function' && isClosedContest(fid);
+      var wk = new Date(); wk.setHours(0,0,0,0); var dw = wk.getDay(); wk.setDate(wk.getDate() - (dw === 0 ? 6 : dw - 1));
+      var preWeek = meta.mtime < wk.getTime();
+      if (!force && closed) { setStatus('warn', 'contest ' + fid + ' is closed (prior week) \u2014 waiting for the next contest\u2019s file \u00b7 ' + nowStr()); busy = false; return; }
+      if (!force && preWeek) { setStatus('warn', 'newest file is from before this Monday \u2014 waiting for this week\u2019s file (Poll now loads it) \u00b7 ' + nowStr()); busy = false; return; }
+      if (meta.mtime === lastM && !(force && closed)) { setStatus('on', 'no change \u00b7 ' + nowStr()); busy = false; return; }
       var text = await (await bfetch('/latest.csv')).text();
-      handleFile(new File([text], meta.name.replace(/\.zip$/i, '.csv'), { type: 'text/csv' }));
+      if (handleFile(new File([text], meta.name.replace(/\.zip$/i, '.csv'), { type: 'text/csv', lastModified: meta.mtime })) === false) { setStatus('warn', 'not loaded \u2014 contest ' + fid + ' left closed \u00b7 ' + nowStr()); busy = false; return; }
       lastM = meta.mtime;
       setStatus('on', 'updated ' + nowStr() + ' \u00b7 ' + meta.name);
     } catch (e) {
@@ -2575,7 +2718,7 @@ function resetForNextTournament() {
     }
     busy = false;
   }
-  btn.addEventListener('click', pollOnce);
+  btn.addEventListener('click', function () { pollOnce(true); });
   pollOnce();
   setInterval(pollOnce, POLL_MS);
 })();
@@ -2592,7 +2735,7 @@ function resetForNextTournament() {
   var STALE_MS=30*60*1000;
   var FALLBACK_COLORS=['#3b82f6','#a855f7','#14b8a6','#f59e0b','#ef4444','#22c55e','#e879f9','#38bdf8'];
   var SHORT_MC={DrinkMilk:'DM',SevereChafing:'SC',moklovin:'Mok',PeshtigoIndians:'PI'};
-  var mcChart=null, lastUtc=null, busy=false, lastRows=0;
+  var mcChart=null, lastUtc=null, lastEng=null, busy=false, again=false, lastRows=0;
   /* v3.51 — From/To window, same contract as the score tracker's X_START/X_END.
      Held here, not inside render(), because mcPoll() rebuilds the chart from
      scratch every two minutes and would otherwise reset the operator's window.
@@ -2632,7 +2775,7 @@ function resetForNextTournament() {
   }
 
   /* rows -> {labels, series[], stamps[]} : newest contest only, trailing 2h. */
-  function shape(rows){
+  function shape(rows, meta){   // meta (v3.57): the /meta answer, for the engine's contest
     var clean = [];
     (rows||[]).forEach(function(r){
       if (!r) return;
@@ -2641,6 +2784,23 @@ function resetForNextTournament() {
       clean.push({t:t, alias:String(r.alias).trim(), p:p*100, contest:String(r.contest==null?'':r.contest).trim()});
     });
     if (!clean.length) return { labels:[], series:[], stamps:[], maxT:NaN, contest:null };
+    /* v3.57: a closed contest is a prior week — never drawn, however new its rows (the engine may
+       still be ticking on it); the board's own contest is never closed while it is on screen */
+    if (typeof isClosedContest === 'function'){
+      clean = clean.filter(function(x){ return !isClosedContest(x.contest); });
+      if (!clean.length) return { labels:[], series:[], stamps:[], maxT:NaN, contest:null };
+    }
+    /* v3.57: with a v1.3 /meta, draw only the board's contest or the contest the engine is on now
+       (newest of the two), never "the newest other contest" — the CSV only grows and holds every
+       prior week. Servers before v1.3 do not say: v3.56 behaviour. */
+    if (meta && (('env_contest' in meta) || ('pinned' in meta))){
+      var eng = String(meta.env_contest || meta.pinned || ''), scv = screenContest();
+      /* no board: the engine may still sit on last week's contest until this week's file arrives
+         (Mon-Wed) — only its rows from this week (a Monday finish) are this week's */
+      var wk0 = (scv === null && typeof thisMondayMs === 'function') ? thisMondayMs() : -Infinity;
+      clean = clean.filter(function(x){ return (eng && x.contest === eng && x.t >= wk0) || (scv && x.contest === String(scv)); });
+      if (!clean.length) return { labels:[], series:[], stamps:[], maxT:NaN, contest:null };
+    }
     var maxT=-Infinity, contest=null;
     clean.forEach(function(x){ if (x.t>maxT){ maxT=x.t; contest=x.contest; } });
     var keep = clean.filter(function(x){ return x.contest===contest && x.t>=maxT-WINDOW_MS; });
@@ -2662,7 +2822,9 @@ function resetForNextTournament() {
 
   function readout(sh){
     var host=el('mcReadout'); if (!host) return;
-    if (!sh.series.length){ host.innerHTML='<span style="font-size:11px;color:var(--t3)">No Monte Carlo data</span>'; return; }
+    if (!sh.series.length){ host.innerHTML='<span style="font-size:11px;color:var(--t3)">'+(screenContest()===null
+      ? 'No Monte Carlo data \u2014 load this week\u2019s standings file'
+      : 'No Monte Carlo data')+'</span>'; return; }
     host.innerHTML=sh.series.map(function(s){
       return '<span class="mc-chip"><i style="background:'+s.color+'"></i>'+s.label+' '+
              (s.latest===null?'\u2014':s.latest.toFixed(1)+'%')+'</span>';
@@ -2755,7 +2917,7 @@ function resetForNextTournament() {
   }
 
   async function mcPoll(){
-    if (busy) return;
+    if (busy){ again = true; return; }   // v3.57: a refresh asked for mid-poll runs right after it
     busy = true;
     try {
       var mr = await fetch(TS_BASE+'/meta', {cache:'no-store'});
@@ -2763,11 +2925,12 @@ function resetForNextTournament() {
       var meta = await mr.json();
       var stampMs = parseUtc(meta.last_utc), nowMs = Date.parse(meta.server_utc);
       if (isNaN(nowMs)) nowMs = Date.now();
-      if (meta.last_utc !== lastUtc){            // only refetch the CSV when it moved
+      var engNow = String(meta.env_contest || meta.pinned || '');
+      if (meta.last_utc !== lastUtc || engNow !== lastEng){   // refetch when the CSV moved or the engine changed contest (v3.57)
         var cr = await fetch(TS_BASE+'/timeseries.csv', {cache:'no-store'});
         if (!cr || !cr.ok) throw new Error('csv HTTP '+(cr?cr.status:'?'));
-        var shaped = shape(parseCsvText(await cr.text()));
-        lastUtc = meta.last_utc; lastRows = meta.rows;
+        var shaped = shape(parseCsvText(await cr.text()), meta);
+        lastUtc = meta.last_utc; lastRows = meta.rows; lastEng = engNow;
         render(shaped);
       }
       /* v3.54 \u2014 THREE separate facts, not two: is the producer alive, is it SUCCEEDING,
@@ -2823,10 +2986,11 @@ function resetForNextTournament() {
         var errOnWant   = prodErr && prodC === want;
         var notLive     = String(meta.producer_status||'').toLowerCase()==='not_live';
         var SW  = 'switching the engine to contest ' + want + '\u2026';
-        var NOT = 'CHART IS NOT YOUR CONTEST \u2014 it shows ' + drawn + ', your file is ' + want + '. ';
+        var NOT = drawn ? 'CHART IS NOT YOUR CONTEST \u2014 it shows ' + drawn + ', your file is ' + want + '. '
+                        : 'NO CHART FOR YOUR CONTEST ' + want + ' \u2014 ';   // v3.57: closed contests are not drawn, so the chart can be empty
         if (sc === ''){
           msgs.push('This file\u2019s name carries no contest id, so the chart cannot be matched to it' + (drawn ? ' (chart shows contest ' + drawn + ').' : '.'));
-        } else if (want && drawn && drawn !== want){
+        } else if (want && drawn !== want && (drawn || v13)){   // v3.57: an EMPTY chart still says where the switch stopped
           if (!v13)                  msgs.push('Chart shows contest ' + drawn + ' \u2014 your file is contest ' + want + '.');
           else if (pinned !== want)  msgs.push(sending ? SW
                                        : NOT + 'The dashboard could not set the engine to it (pinned to ' + (pinned || 'no contest') + '). Re-drop the file while on the tailnet.');
@@ -2834,6 +2998,7 @@ function resetForNextTournament() {
                                        : NOT + 'The engine refused it and stays on ' + (envC || 'no contest') + ' (not a GOLF contest, or DK did not answer). The half-hourly check retries; see the wls-env-update log on the server.');
           else if (prodStopped)      msgs.push(NOT + 'The engine is set to it but the producer has stopped.');
           else if (errOnWant)        msgs.push(NOT + 'The engine is set to it but its runs are failing (see the producer error).');
+          else if (!drawn)           { /* engine set to it, no rows yet: the readout already says "No Monte Carlo data" */ }
           else if (notLive)          msgs.push('Chart still shows contest ' + drawn + ' \u2014 the engine is now on ' + want + ' and draws it once play resumes (' + (meta.producer_reason || 'tournament not in progress') + ').');
           else                       msgs.push('Chart still shows contest ' + drawn + ' \u2014 the engine is now on ' + want + ' and draws it on its next run (every 10 min).');
         } else if (want && drawn === want && v13 && !pinFresh && !sending){
@@ -2848,6 +3013,16 @@ function resetForNextTournament() {
       var w = el('mcWhy'); if (w){ w.textContent=''; w.style.display='none'; }   // v3.56: no stale warning under an offline pill
     }
     busy = false;
+    if (again){ again = false; mcPoll(); }
+  }
+  /* v3.57 — re-judge the board now (new file loaded): refetch the CSV and redraw */
+  function refresh(){ lastUtc = null; mcPoll(); }
+  /* v3.57 — week erased: drop the old window, blank the chart and warning, redraw without it */
+  function reset(){
+    MC_X_START = 0; MC_X_END = null;
+    render({ labels:[], series:[], stamps:[], maxT:NaN, contest:null });
+    var w = el('mcWhy'); if (w){ w.textContent=''; w.style.display='none'; }
+    refresh();
   }
 
   function start(){
@@ -2888,7 +3063,7 @@ function resetForNextTournament() {
   }
 
   // test seam for the offline validation harness; unused by the page
-  window.WLS_MC = { shape:shape, poll:mcPoll, render:render, pinContest:pinContest,
+  window.WLS_MC = { shape:shape, poll:mcPoll, render:render, pinContest:pinContest, refresh:refresh, reset:reset,
                     _inflight:function(v){ inflight = v; },
                     window:function(){ return {start:MC_X_START, end:MC_X_END}; },
                     state:function(){ return {lastUtc:lastUtc, rows:lastRows}; } };
