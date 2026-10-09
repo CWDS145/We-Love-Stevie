@@ -1,4 +1,4 @@
-<!-- We Love Stevie Dashboard v3.55 — 2026-10-01 — Course-difficulty panel splits by TEE-TIME WAVE. Root cause: v3.42 split players 50/50 by a finish-order key that gave every back-nine starter (thru shown with '*') key 19, so wave 1 was "started on 10", not "teed off early" (Bank of Utah R1: 777 vs 774 holes when the true waves were 1080 vs ~470). Waves now break at the largest gap in the pgatour tee sheet (golf-proxy /api/teetimes); holes/to-par come from per-hole scorecards; the verdict compares waves on the same holes (hole mix cancels) with a player-clustered SE on the empirical ~0.7 per-hole sigma (was an assumed 0.45, holes independent). Subtitle middot no longer double-escaped. -->
+<!-- We Love Stevie Dashboard v3.56 — 2026-10-09 — Monte Carlo engine follows the DROPPED FILE. Root cause: the engine's contest was set by an auto-roll that guessed the contest product; on 8 Oct it pinned 196416157 (moklovin in, SevereChafing/PeshtigoIndians out) while the operator was watching 196417201, so the MC chart drew Mok. handleFile already read the id from contest-standings-<id>.zip; it now POSTs it to wls_ts_server /contest, which rewrites ~/watch-dk.pin, and a systemd path unit re-points watch-dk at once. The MC panel now warns in amber when the chart is not the dropped file's contest, and says which stage stopped it (pin / engine / not redrawn yet). -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -475,6 +475,7 @@ const DK_MULTIPLE = { double_up: 2, triple_up: 3, '5x': 5 };
 let CONTEST_TYPE = 'double_up';   // '50_50' | 'double_up' | 'triple_up' | '5x' — persisted
 let ENTRY_FEE = 5;                // dollars — persisted
 let PAID_PLACES = null;           // v3.49: fixed paid places from contest details (overlay-safe); null = auto % rule — persisted
+let SCREEN_CONTEST = null;        // v3.56: contest id of the board on screen, from the loaded file's name; '' = name had no id; null = nothing loaded — persisted with the board, read by the MC panel
 function dkRake(fee, type){
   const row = DK_COMMISSION.find(r => fee >= r[0] && fee <= r[1]) || DK_COMMISSION[DK_COMMISSION.length-1];
   return (type === '50_50') ? row[2] : row[3];
@@ -525,7 +526,7 @@ function applyContestConfig(){
   if (typeof saveToStorage === 'function') saveToStorage();
   if (typeof window.__wlsAddonRefresh === 'function') try{ window.__wlsAddonRefresh(); }catch(e){}
 }
-const VERSION = 'v3.55 — 2026-10-01';
+const VERSION = 'v3.56 — 2026-10-09';
  
 let CASH = 0, TOTAL = 0, ODDS = {}, FREQ = {}, ENTRIES = [];
 let ODDS_REAL = new Set(); // v3.48: normalized keys with genuine odds (not worst-odds fallback)
@@ -760,7 +761,7 @@ function saveToStorage() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       entries: ENTRIES, odds: ODDS, freq: FREQ, oddsReal: Array.from(ODDS_REAL),
       total: TOTAL, cashOverride: CASH_OVERRIDE, contestType: CONTEST_TYPE, entryFee: ENTRY_FEE, paidPlaces: PAID_PLACES,
-      uploadTime: lastUploadTime,
+      uploadTime: lastUploadTime, screenContest: SCREEN_CONTEST,
       tournament: document.getElementById('tournamentInput').value.trim(),
       cutNamesInput: document.getElementById('cutNamesInput').value,
       cutManual: Array.from(CUT_MANUAL)
@@ -785,6 +786,7 @@ function fmt(ts) {
 }
  
 function loadData(d, fromStorage = false) {
+  if (fromStorage) { if (d.screenContest !== undefined) SCREEN_CONTEST = d.screenContest; else { try { SCREEN_CONTEST = localStorage.getItem('weLoveStevie_contestKey') || null; } catch(e) {} } }   // v3.56; pre-3.56 saves: the key v3.55 wrote with that board
   TOTAL = d.total; FREQ = d.freq; ENTRIES = d.entries;
   ODDS = {}; Object.keys(d.odds || {}).forEach(k => { ODDS[normalizePlayerName(k)] = d.odds[k]; }); // v3.48: re-key (migrates pre-3.48 raw-key saved state)
   ODDS_REAL = new Set(d.oddsReal ? d.oddsReal.map(normalizePlayerName) : Object.keys(ODDS));
@@ -975,13 +977,21 @@ function handleFile(file) {
       document.getElementById('cashLineInput').value = '';
       lastUploadTime = new Date().toISOString();
       data.uploadTime = lastUploadTime;
+      SCREEN_CONTEST = fileKey;   // v3.56: saved with the board by loadData below
       loadData(data);
       recordScoreSnapshot();
       renderFieldTable();
       autoLoadDrinkMilk();
 if (isLive) fetchLive(); else startLive();   // v3.31: live odds permanent — re-applied immediately after every upload
       const histMsg = sameTournament ? ' (history preserved)' : ' (fresh tournament)';
-      showStatus('Loaded ' + data.total + ' entries, ' + data.oddsReal.length + ' players with real odds' + (isZip ? ' (from ZIP)' : '') + histMsg + '.', true);
+      const loadedMsg = 'Loaded ' + data.total + ' entries, ' + data.oddsReal.length + ' players with real odds' + (isZip ? ' (from ZIP)' : '') + histMsg + '.';
+      showStatus(loadedMsg, true);
+      // v3.56: the file name is the contest — point the Monte Carlo engine at it
+      if (fileKey && window.WLS_MC && window.WLS_MC.pinContest) {
+        window.WLS_MC.pinContest(fileKey, file.name).then(function(r) {
+          if (r && r.changed) showStatus(loadedMsg + ' Contest ' + fileKey + ' sent to the Monte Carlo engine — the panel warns if it does not take.', true);
+        });
+      }
     } catch(err) { showStatus('Parse error: ' + err.message, false); }
   };
   reader.readAsArrayBuffer(file);
@@ -2342,6 +2352,7 @@ function resetForNextTournament() {
   SCORE_HISTORY = [];
   LIVE_LAST_PAYLOAD = null;
   lastUploadTime = null;
+  SCREEN_CONTEST = null;   // v3.56
   currentSingleEntry = null;
   cmpEntries = [];
  
@@ -2402,6 +2413,7 @@ function resetForNextTournament() {
       ENTRIES = []; ODDS = {}; FREQ = {}; TOTAL = 0;
       CUT_PLAYERS = new Set(); CUT_MANUAL = new Set(); CUT_LIVE = new Set(); CUT_LINE = null; PLAYER_SCORES = {};
       SCORE_HISTORY = [];
+      SCREEN_CONTEST = null;   // v3.56
     }
     document.getElementById('timestamp').textContent = 'Upload CSV to begin';
   }
@@ -2785,12 +2797,56 @@ function resetForNextTournament() {
       setPill(kind, lead + ' \u00b7 ' + tail);
       /* the reason names the actual fault and is far too long for the pill, so it goes under
          the chart beside the caption that is already there. */
+      /* v3.56 — the one fact that matters: is the chart the contest of the file on THIS tab's
+         screen? The original fault was a wrong-contest chart with no warning. The answer comes
+         first, the reason second, read from where the dropped id stopped: pin (server wrote it)
+         -> env (updater accepted it: GOLF, DK answered, watch-dk restarted) -> producer (mc_tick
+         ticking; an error counts only if that tick ran on this contest) -> chart (shape().contest
+         = newest contest in the CSV). want = SCREEN_CONTEST, the board on this tab's screen.
+         "switching": this tab's own POST for this contest is in
+         flight (pin stage only), or the pin changed < 2 min ago (server clock; env stage and the
+         chart-matches checks). Servers before v1.3 send no pinned/env_contest: neutral line only. */
       var why = el('mcWhy');
       if (why){
-        why.textContent = (prodErr && meta.producer_reason) ? ('producer error: ' + meta.producer_reason) : '';
+        var msgs = [];
+        if (prodErr && meta.producer_reason) msgs.push('producer error: ' + meta.producer_reason);
+        var sc     = screenContest(), want = sc || '';
+        var v13    = ('pinned' in meta) && ('env_contest' in meta);
+        var pinned = meta.pinned == null ? '' : String(meta.pinned);
+        var envC   = meta.env_contest == null ? '' : String(meta.env_contest);
+        var prodC  = meta.producer_contest == null ? '' : String(meta.producer_contest);
+        var drawn  = (lastShaped && lastShaped.contest) ? String(lastShaped.contest) : '';
+        var pinMs  = parseUtc(meta.pinned_utc);
+        var sending  = !!(inflight && inflight.id === want && fresh(inflight.at, Date.now()));
+        var pinFresh = !isNaN(pinMs) && fresh(pinMs, nowMs);
+        var prodStopped = !isNaN(prodMs) && (nowMs - prodMs) > STALE_MS;
+        var errOnWant   = prodErr && prodC === want;
+        var notLive     = String(meta.producer_status||'').toLowerCase()==='not_live';
+        var SW  = 'switching the engine to contest ' + want + '\u2026';
+        var NOT = 'CHART IS NOT YOUR CONTEST \u2014 it shows ' + drawn + ', your file is ' + want + '. ';
+        if (sc === ''){
+          msgs.push('This file\u2019s name carries no contest id, so the chart cannot be matched to it' + (drawn ? ' (chart shows contest ' + drawn + ').' : '.'));
+        } else if (want && drawn && drawn !== want){
+          if (!v13)                  msgs.push('Chart shows contest ' + drawn + ' \u2014 your file is contest ' + want + '.');
+          else if (pinned !== want)  msgs.push(sending ? SW
+                                       : NOT + 'The dashboard could not set the engine to it (pinned to ' + (pinned || 'no contest') + '). Re-drop the file while on the tailnet.');
+          else if (envC !== want)    msgs.push(pinFresh ? SW
+                                       : NOT + 'The engine refused it and stays on ' + (envC || 'no contest') + ' (not a GOLF contest, or DK did not answer). The half-hourly check retries; see the wls-env-update log on the server.');
+          else if (prodStopped)      msgs.push(NOT + 'The engine is set to it but the producer has stopped.');
+          else if (errOnWant)        msgs.push(NOT + 'The engine is set to it but its runs are failing (see the producer error).');
+          else if (notLive)          msgs.push('Chart still shows contest ' + drawn + ' \u2014 the engine is now on ' + want + ' and draws it once play resumes (' + (meta.producer_reason || 'tournament not in progress') + ').');
+          else                       msgs.push('Chart still shows contest ' + drawn + ' \u2014 the engine is now on ' + want + ' and draws it on its next run (every 10 min).');
+        } else if (want && drawn === want && v13 && !pinFresh && !sending){
+          if (envC && envC !== want) msgs.push('The engine has moved to contest ' + envC + ' \u2014 this chart (your contest ' + want + ') will not update. Re-drop the file to move it back.');
+          else if (pinned !== want)  msgs.push('Engine is on your contest but not pinned to it, so it may roll away. Re-drop the file to lock it.');
+        }
+        why.textContent = msgs.join(' · ');
         why.style.display = why.textContent ? 'block' : 'none';
       }
-    } catch (e){ setPill('off','offline'); }
+    } catch (e){
+      setPill('off','offline');
+      var w = el('mcWhy'); if (w){ w.textContent=''; w.style.display='none'; }   // v3.56: no stale warning under an offline pill
+    }
     busy = false;
   }
 
@@ -2801,8 +2857,39 @@ function resetForNextTournament() {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 
+  /* v3.56 — the dropped file names the contest (contest-standings-<id>.zip). Tell the engine,
+     so the MC chart follows the contest the operator is actually watching. Before this the
+     engine's contest came from an auto-roll that guessed the contest product and on 8 Oct
+     picked a contest with moklovin in it and SevereChafing/PeshtigoIndians out. The server
+     no-ops when the id is unchanged, so every drop may call this. Off-tailnet: resolves null. */
+  var SWITCH_GRACE_MS = 2*60*1000;   // POST, then the updater, run within seconds of a drop
+  /* The contest of the board THIS tab shows: SCREEN_CONTEST, set by handleFile from the file
+     name and saved/restored with the board itself (so a reload, the Monday wipe and End
+     Tournament all agree with what is on screen). Never the shared contest key: another tab
+     may have loaded another contest since. null = nothing loaded; '' = file name had no id. */
+  function screenContest(){ return (typeof SCREEN_CONTEST !== 'undefined') ? SCREEN_CONTEST : null; }
+  /* this tab's POST while it is in flight; cleared when it settles, success or failure */
+  var inflight = null;
+  /* inside the switch grace; a negative age (clock stepped back) is not fresh */
+  function fresh(ms, now){ var age = now - ms; return ms > 0 && age >= 0 && age < SWITCH_GRACE_MS; }
+  async function pinContest(id, fileName){
+    if (!/^[0-9]{6,12}$/.test(String(id||''))) return null;
+    inflight = { id: String(id), at: Date.now() };
+    try {
+      var r = await fetch(TS_BASE+'/contest', { method:'POST', cache:'no-store',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ contest:String(id), file:String(fileName||'') }) });
+      if (!r || !r.ok) return null;
+      var j = await r.json();
+      if (j && j.changed){ lastUtc = null; setTimeout(mcPoll, 20000); }   // re-check once the updater has run
+      return j;
+    } catch (e){ return null; }
+    finally { inflight = null; }
+  }
+
   // test seam for the offline validation harness; unused by the page
-  window.WLS_MC = { shape:shape, poll:mcPoll, render:render,
+  window.WLS_MC = { shape:shape, poll:mcPoll, render:render, pinContest:pinContest,
+                    _inflight:function(v){ inflight = v; },
                     window:function(){ return {start:MC_X_START, end:MC_X_END}; },
                     state:function(){ return {lastUtc:lastUtc, rows:lastRows}; } };
 })();
